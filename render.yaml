@@ -58,6 +58,7 @@ services:
     name: talk-to-folder-worker
     runtime: python
     plan: starter
+    numInstances: 3
     buildCommand: cd backend && pip install -r requirements.txt
     startCommand: cd backend && python -m app.worker
     envVars:

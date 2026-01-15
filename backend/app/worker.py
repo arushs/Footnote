@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 
@@ -19,23 +20,38 @@ def format_vector(embedding: list[float]) -> str:
     """Format embedding list as PostgreSQL vector string."""
     return "[" + ",".join(str(x) for x in embedding) + "]"
 
+
+def calculate_backoff(attempts: int, base_delay: int = 30) -> timedelta:
+    """
+    Calculate exponential backoff delay.
+
+    Attempts -> Delay: 1->30s, 2->60s, 3->120s, 4->240s, 5->480s
+    Capped at 10 minutes.
+    """
+    delay_seconds = base_delay * (2 ** (attempts - 1))
+    return timedelta(seconds=min(delay_seconds, 600))
+
+
 logger = logging.getLogger(__name__)
 
 
 async def claim_next_job() -> IndexingJob | None:
-    """Atomically claim the next pending job."""
+    """Atomically claim the next pending job, respecting retry_after backoff."""
     async with async_session() as db:
         # Use SELECT FOR UPDATE SKIP LOCKED to prevent race conditions
+        # Only claim jobs where retry_after is NULL or in the past
         result = await db.execute(
             text("""
                 UPDATE indexing_jobs
                 SET status = 'processing',
                     started_at = NOW(),
-                    attempts = attempts + 1
+                    attempts = attempts + 1,
+                    retry_after = NULL
                 WHERE id = (
                     SELECT id FROM indexing_jobs
                     WHERE status = 'pending'
                       AND attempts < max_attempts
+                      AND (retry_after IS NULL OR retry_after <= NOW())
                     ORDER BY priority DESC, created_at ASC
                     LIMIT 1
                     FOR UPDATE SKIP LOCKED
@@ -339,25 +355,40 @@ async def handle_job_failure(job: IndexingJob, error: Exception) -> None:
         await db.commit()
 
 
-async def worker_loop() -> None:
-    """Main worker loop - polls for jobs and processes them."""
-    logger.info("Worker started, polling for jobs...")
+async def process_one_job() -> bool:
+    """Try to claim and process one job. Returns True if a job was processed."""
+    job = await claim_next_job()
+    if job is None:
+        return False
+
+    logger.info(f"Processing job {job.id}...")
+    try:
+        await process_job(job)
+        logger.info(f"Job {job.id} completed successfully")
+    except Exception as e:
+        await handle_job_failure(job, e)
+    return True
+
+
+async def worker_loop(concurrency: int = 5) -> None:
+    """Main worker loop - processes multiple jobs concurrently."""
+    logger.info(f"Worker started with concurrency={concurrency}, polling for jobs...")
 
     while True:
         try:
-            job = await claim_next_job()
+            # Try to process up to `concurrency` jobs in parallel
+            tasks = [process_one_job() for _ in range(concurrency)]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            if job is None:
-                # No jobs available, wait before polling again
+            # Log any unexpected errors
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"Worker task error: {result}")
+
+            # If no jobs were found, wait before polling again
+            jobs_processed = sum(1 for r in results if r is True)
+            if jobs_processed == 0:
                 await asyncio.sleep(2)
-                continue
-
-            logger.info(f"Processing job {job.id}...")
-            try:
-                await process_job(job)
-                logger.info(f"Job {job.id} completed successfully")
-            except Exception as e:
-                await handle_job_failure(job, e)
 
         except Exception as e:
             logger.error(f"Worker loop error: {e}")
@@ -365,5 +396,7 @@ async def worker_loop() -> None:
 
 
 if __name__ == "__main__":
+    import os
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(worker_loop())
+    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "5"))
+    asyncio.run(worker_loop(concurrency))

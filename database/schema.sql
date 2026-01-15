@@ -120,8 +120,9 @@ CREATE TABLE indexing_jobs (
     status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
     priority INT DEFAULT 0,  -- Higher = process first
     attempts INT DEFAULT 0,
-    max_attempts INT DEFAULT 3,
+    max_attempts INT DEFAULT 5,  -- Increased for better resilience
     last_error TEXT,
+    retry_after TIMESTAMPTZ,  -- Don't retry until this time (exponential backoff)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ
