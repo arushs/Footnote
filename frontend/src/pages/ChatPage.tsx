@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { FolderOpen, ArrowRight } from 'lucide-react'
 import { MessageList, MessageInput } from '../components/chat'
-import { ChatHistory } from '../components/sidebar'
+import { ChatHistory, AddFolderDropdown } from '../components/sidebar'
 import { SourcesPanel } from '../components/sources'
 import { IndexingProgress, IndexingComplete } from '../components/overlay'
 import { AppShell } from '../components/layout/AppShell'
@@ -23,13 +23,16 @@ function EmptyState() {
         <p className="text-muted-foreground mb-6">
           Select a Google Drive folder to start chatting with your documents.
         </p>
-        <Link
-          to="/folders"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-        >
-          Browse folders
-          <ArrowRight className="w-4 h-4" />
-        </Link>
+        <div className="flex items-center justify-center gap-3">
+          <AddFolderDropdown />
+          <Link
+            to="/folders"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Browse folders
+            <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
       </div>
     </div>
   )
