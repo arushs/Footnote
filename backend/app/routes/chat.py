@@ -118,12 +118,12 @@ async def retrieve_chunks(
             f.file_name,
             f.google_file_id,
             f.mime_type,
-            (c.chunk_embedding <=> :embedding::vector) as distance
+            (c.chunk_embedding <=> CAST(:embedding AS vector)) as distance
         FROM chunks c
         JOIN files f ON c.file_id = f.id
         WHERE f.folder_id = :folder_id
           AND c.chunk_embedding IS NOT NULL
-        ORDER BY c.chunk_embedding <=> :embedding::vector
+        ORDER BY c.chunk_embedding <=> CAST(:embedding AS vector)
         LIMIT :top_k
     """)
 

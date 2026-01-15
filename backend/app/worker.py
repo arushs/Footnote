@@ -187,7 +187,7 @@ async def process_job(job: IndexingJob) -> None:
             text("""
                 UPDATE files
                 SET file_preview = :preview,
-                    file_embedding = :embedding::vector,
+                    file_embedding = CAST(:embedding AS vector),
                     index_status = 'indexed'
                 WHERE id = :file_id
             """),
@@ -209,7 +209,7 @@ async def process_job(job: IndexingJob) -> None:
             await db.execute(
                 text("""
                     INSERT INTO chunks (id, file_id, chunk_text, chunk_embedding, location, chunk_index)
-                    VALUES (:id, :file_id, :chunk_text, :chunk_embedding::vector, :location::jsonb, :chunk_index)
+                    VALUES (:id, :file_id, :chunk_text, CAST(:chunk_embedding AS vector), CAST(:location AS jsonb), :chunk_index)
                 """),
                 {
                     "id": str(uuid.uuid4()),
