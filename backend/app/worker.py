@@ -312,20 +312,13 @@ async def update_folder_progress(folder_id: uuid.UUID) -> None:
 
 
 async def handle_job_failure(job: IndexingJob, error: Exception) -> None:
-    """Handle a failed job - retry or mark as failed."""
-    logger.error(f"Job {job.id} failed: {error}")
+    """Handle a failed job - retry with backoff until max_attempts exhausted."""
+    logger.error(f"Job {job.id} failed (attempt {job.attempts}/{job.max_attempts}): {error}")
 
     async with async_session() as db:
-        # Update file status
-        await db.execute(
-            text("""
-                UPDATE files SET index_status = 'failed'
-                WHERE id = :file_id
-            """),
-            {"file_id": str(job.file_id)}
-        )
-
         if job.attempts >= job.max_attempts:
+            # Exhausted all retries - mark as permanently failed
+            logger.error(f"Job {job.id} permanently failed after {job.attempts} attempts")
             await db.execute(
                 text("""
                     UPDATE indexing_jobs
@@ -334,22 +327,34 @@ async def handle_job_failure(job: IndexingJob, error: Exception) -> None:
                 """),
                 {"job_id": str(job.id), "error": str(error)[:1000]},
             )
+            await db.execute(
+                text("UPDATE files SET index_status = 'failed' WHERE id = :file_id"),
+                {"file_id": str(job.file_id)},
+            )
         else:
+            # Schedule retry with exponential backoff
+            backoff = calculate_backoff(job.attempts)
+            retry_at = datetime.now(timezone.utc) + backoff
+            logger.info(f"Job {job.id} will retry in {int(backoff.total_seconds())}s")
+
             await db.execute(
                 text("""
                     UPDATE indexing_jobs
-                    SET status = 'pending', last_error = :error
+                    SET status = 'pending',
+                        last_error = :error,
+                        retry_after = :retry_after
                     WHERE id = :job_id
                 """),
-                {"job_id": str(job.id), "error": str(error)[:1000]},
+                {
+                    "job_id": str(job.id),
+                    "error": str(error)[:1000],
+                    "retry_after": retry_at,
+                },
             )
-            # Reset file status for retry
+            # Keep file as pending during retries
             await db.execute(
-                text("""
-                    UPDATE files SET index_status = 'pending'
-                    WHERE id = :file_id
-                """),
-                {"file_id": str(job.file_id)}
+                text("UPDATE files SET index_status = 'pending' WHERE id = :file_id"),
+                {"file_id": str(job.file_id)},
             )
 
         await db.commit()
