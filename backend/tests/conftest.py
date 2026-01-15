@@ -29,7 +29,7 @@ os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/talk_to_folder_test
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:8000/api/auth/google/callback"
-os.environ["TOGETHER_API_KEY"] = "test-together-key"
+os.environ["FIREWORKS_API_KEY"] = "test-fireworks-key"
 os.environ["ANTHROPIC_API_KEY"] = "test-anthropic-key"
 os.environ["MISTRAL_API_KEY"] = "test-mistral-key"
 os.environ["SECRET_KEY"] = "test-secret-key"
@@ -379,20 +379,23 @@ def mock_drive_service():
 @pytest.fixture
 def mock_embedding_service():
     """Mock embedding and reranking services."""
-    with patch("app.services.embedding.embed_text") as mock_embed_text, \
-         patch("app.services.embedding.embed_batch") as mock_embed_batch, \
+    with patch("app.services.embedding.embed_document") as mock_embed_document, \
+         patch("app.services.embedding.embed_query") as mock_embed_query, \
+         patch("app.services.embedding.embed_documents_batch") as mock_embed_batch, \
          patch("app.services.embedding.rerank") as mock_rerank:
 
         # Return 768-dimensional dummy embeddings
-        mock_embed_text.return_value = [0.1] * 768
+        mock_embed_document.return_value = [0.1] * 768
+        mock_embed_query.return_value = [0.1] * 768
         mock_embed_batch.return_value = [[0.1] * 768 for _ in range(10)]
 
         # Return reranked indices with scores
         mock_rerank.return_value = [(0, 0.95), (1, 0.85), (2, 0.75)]
 
         yield {
-            "embed_text": mock_embed_text,
-            "embed_batch": mock_embed_batch,
+            "embed_document": mock_embed_document,
+            "embed_query": mock_embed_query,
+            "embed_documents_batch": mock_embed_batch,
             "rerank": mock_rerank,
         }
 

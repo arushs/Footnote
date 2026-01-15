@@ -40,7 +40,7 @@ services:
         sync: false
       - key: GOOGLE_REDIRECT_URI
         value: https://talk-to-folder-api.onrender.com/api/auth/google/callback
-      - key: TOGETHER_API_KEY
+      - key: FIREWORKS_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
@@ -65,7 +65,7 @@ services:
         fromDatabase:
           name: talk-to-folder-db
           property: connectionString
-      - key: TOGETHER_API_KEY
+      - key: FIREWORKS_API_KEY
         sync: false
       - key: MISTRAL_API_KEY
         sync: false

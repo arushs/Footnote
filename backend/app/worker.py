@@ -12,7 +12,7 @@ from app.models.db_models import File, Chunk, IndexingJob, Session
 from app.services.drive import DriveService
 from app.services.extraction import ExtractionService
 from app.services.chunking import chunk_document, generate_file_preview
-from app.services.embedding import embed_text, embed_batch
+from app.services.embedding import embed_document, embed_documents_batch
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -165,7 +165,7 @@ async def process_job(job: IndexingJob) -> None:
     logger.info(f"Generated preview ({len(preview)} chars)")
 
     # Step 3: Generate file-level embedding
-    file_embedding = await embed_text(preview) if preview else None
+    file_embedding = await embed_document(preview) if preview else None
 
     # Step 4: Chunk the document
     chunks = chunk_document(document.blocks)
@@ -178,7 +178,7 @@ async def process_job(job: IndexingJob) -> None:
 
     # Step 5: Generate chunk embeddings in batches
     chunk_texts = [c.text for c in chunks]
-    chunk_embeddings = await embed_batch(chunk_texts)
+    chunk_embeddings = await embed_documents_batch(chunk_texts)
 
     # Step 6: Store everything in database
     async with async_session() as db:
