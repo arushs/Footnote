@@ -45,13 +45,17 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true }: UseChatOp
     abortControllerRef.current = new AbortController()
 
     try {
-      const response = await fetch(`/api/folders/${folderId}/chat`, {
+      // Use conversation-centric endpoint if we have an existing conversation
+      const url = state.currentConversationId
+        ? `/api/conversations/${state.currentConversationId}/chat`
+        : `/api/folders/${folderId}/chat`
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           message: content,
-          conversation_id: state.currentConversationId,
         }),
         signal: abortControllerRef.current.signal,
       })
