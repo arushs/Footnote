@@ -37,6 +37,9 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 .tox/
+test-results/
+playwright-report/
+playwright/.cache/
 
 # Logs
 *.log
