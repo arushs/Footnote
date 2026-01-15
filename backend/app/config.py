@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
     # API Keys
-    together_api_key: str = ""
+    fireworks_api_key: str = ""
     anthropic_api_key: str = ""
     mistral_api_key: str = ""
 

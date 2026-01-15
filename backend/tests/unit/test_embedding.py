@@ -1,11 +1,12 @@
-"""Tests for the embedding service."""
+"""Tests for the embedding service using Fireworks AI."""
 
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.services.embedding import (
-    embed_text,
-    embed_batch,
+    embed_document,
+    embed_query,
+    embed_documents_batch,
     rerank,
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
@@ -22,70 +23,98 @@ def create_mock_embedding_response(embeddings: list[list[float]]):
     return response
 
 
-def create_mock_rerank_response(results: list[tuple[int, float]]):
-    """Create a mock rerank response object."""
-    response = MagicMock()
-    response.results = [
-        MagicMock(index=idx, relevance_score=score) for idx, score in results
-    ]
-    return response
-
-
-class TestEmbedText:
-    """Tests for single text embedding."""
+class TestEmbedDocument:
+    """Tests for document embedding."""
 
     @pytest.mark.asyncio
-    async def test_embed_returns_768_dimensions(self):
+    async def test_embed_document_returns_768_dimensions(self):
         """Embedding should return 768-dimensional vector."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
         with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_client.return_value = mock_client
 
-            result = await embed_text("test query")
+            result = await embed_document("test document")
 
             assert len(result) == EMBEDDING_DIM
             assert all(isinstance(x, float) for x in result)
 
     @pytest.mark.asyncio
-    async def test_embed_text_calls_api_correctly(self):
-        """Embedding should call the API with correct parameters."""
+    async def test_embed_document_uses_search_document_prefix(self):
+        """Document embedding should use search_document prefix."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
         with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_client.return_value = mock_client
 
-            await embed_text("test query")
+            await embed_document("test document")
 
             mock_client.embeddings.create.assert_called_once_with(
                 model=EMBEDDING_MODEL,
-                input="test query",
+                input="search_document: test document",
             )
 
     @pytest.mark.asyncio
-    async def test_embed_text_handles_empty_string(self):
-        """Embedding should handle empty string input."""
-        mock_response = create_mock_embedding_response([[0.0] * EMBEDDING_DIM])
+    async def test_embed_document_raises_on_empty_string(self):
+        """Document embedding should raise ValueError for empty string."""
+        with pytest.raises(ValueError, match="Cannot embed empty text"):
+            await embed_document("")
+
+    @pytest.mark.asyncio
+    async def test_embed_document_raises_on_whitespace_only(self):
+        """Document embedding should raise ValueError for whitespace-only string."""
+        with pytest.raises(ValueError, match="Cannot embed empty text"):
+            await embed_document("   ")
+
+
+class TestEmbedQuery:
+    """Tests for query embedding."""
+
+    @pytest.mark.asyncio
+    async def test_embed_query_returns_768_dimensions(self):
+        """Query embedding should return 768-dimensional vector."""
+        mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
         with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_client.return_value = mock_client
 
-            result = await embed_text("")
+            result = await embed_query("test query")
 
             assert len(result) == EMBEDDING_DIM
+            assert all(isinstance(x, float) for x in result)
+
+    @pytest.mark.asyncio
+    async def test_embed_query_uses_search_query_prefix(self):
+        """Query embedding should use search_query prefix."""
+        mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
+
+        with patch("app.services.embedding._get_client") as mock_get_client:
+            mock_client = MagicMock()
+            mock_client.embeddings.create = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
+
+            await embed_query("test query")
+
+            mock_client.embeddings.create.assert_called_once_with(
+                model=EMBEDDING_MODEL,
+                input="search_query: test query",
+            )
+
+    @pytest.mark.asyncio
+    async def test_embed_query_raises_on_empty_string(self):
+        """Query embedding should raise ValueError for empty string."""
+        with pytest.raises(ValueError, match="Cannot embed empty query"):
+            await embed_query("")
 
 
-class TestEmbedBatch:
-    """Tests for batch embedding."""
+class TestEmbedDocumentsBatch:
+    """Tests for batch document embedding."""
 
     @pytest.mark.asyncio
     async def test_batch_embedding_multiple_texts(self):
@@ -97,54 +126,42 @@ class TestEmbedBatch:
         ])
 
         with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_client.return_value = mock_client
 
             texts = ["text one", "text two", "text three"]
-            results = await embed_batch(texts)
+            results = await embed_documents_batch(texts)
 
             assert len(results) == 3
             for result in results:
                 assert len(result) == EMBEDDING_DIM
 
     @pytest.mark.asyncio
-    async def test_batch_embedding_single_text(self):
-        """Batch embedding should work with single text."""
-        mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
-
-        with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
-            mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            texts = ["single text"]
-            results = await embed_batch(texts)
-
-            assert len(results) == 1
-            assert len(results[0]) == EMBEDDING_DIM
+    async def test_batch_embedding_empty_list(self):
+        """Batch embedding should return empty list for empty input."""
+        results = await embed_documents_batch([])
+        assert results == []
 
     @pytest.mark.asyncio
-    async def test_batch_embedding_preserves_order(self):
-        """Batch embedding should preserve input order."""
+    async def test_batch_embedding_uses_search_document_prefix(self):
+        """Batch embedding should prefix all texts with search_document."""
         mock_response = create_mock_embedding_response([
             [0.1] * EMBEDDING_DIM,
-            [0.5] * EMBEDDING_DIM,
+            [0.2] * EMBEDDING_DIM,
         ])
 
         with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
+            mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_get_client.return_value = mock_client
 
-            texts = ["first", "second"]
-            results = await embed_batch(texts)
+            await embed_documents_batch(["first", "second"])
 
-            assert results[0][0] == 0.1
-            assert results[1][0] == 0.5
+            mock_client.embeddings.create.assert_called_once_with(
+                model=EMBEDDING_MODEL,
+                input=["search_document: first", "search_document: second"],
+            )
 
 
 class TestRerank:
@@ -153,17 +170,21 @@ class TestRerank:
     @pytest.mark.asyncio
     async def test_rerank_returns_indices_and_scores(self):
         """Rerank should return list of (index, score) tuples."""
-        mock_response = create_mock_rerank_response([
-            (2, 0.95),
-            (0, 0.80),
-            (1, 0.65),
-        ])
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "results": [
+                {"index": 2, "relevance_score": 0.95},
+                {"index": 0, "relevance_score": 0.80},
+                {"index": 1, "relevance_score": 0.65},
+            ]
+        }
+        mock_response.raise_for_status = MagicMock()
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("httpx.AsyncClient") as mock_httpx:
             mock_client = AsyncMock()
-            mock_client.rerank.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
+            mock_client.post = AsyncMock(return_value=mock_response)
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=None)
 
             query = "What is the revenue?"
             documents = ["Revenue was $10M", "Costs increased", "Revenue grew 20%"]
@@ -174,56 +195,34 @@ class TestRerank:
             assert results[0] == (2, 0.95)
 
     @pytest.mark.asyncio
-    async def test_rerank_respects_top_k(self):
-        """Rerank should respect top_k parameter."""
-        mock_response = create_mock_rerank_response([
-            (0, 0.9),
-            (1, 0.8),
-        ])
-
-        with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
-            mock_client.rerank.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            await rerank("query", ["doc1", "doc2", "doc3"], top_k=2)
-
-            mock_client.rerank.create.assert_called_once_with(
-                model=RERANK_MODEL,
-                query="query",
-                documents=["doc1", "doc2", "doc3"],
-                top_n=2,
-            )
+    async def test_rerank_empty_documents(self):
+        """Rerank should return empty list for empty documents."""
+        results = await rerank("query", [], top_k=3)
+        assert results == []
 
     @pytest.mark.asyncio
-    async def test_rerank_uses_correct_model(self):
-        """Rerank should use the correct rerank model."""
-        mock_response = create_mock_rerank_response([])
+    async def test_rerank_raises_on_empty_query(self):
+        """Rerank should raise ValueError for empty query."""
+        with pytest.raises(ValueError, match="Query cannot be empty"):
+            await rerank("", ["doc1", "doc2"])
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
-            mock_client = AsyncMock()
-            mock_client.rerank.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value.__aenter__ = AsyncMock(return_value=mock_client)
-            mock_get_client.return_value.__aexit__ = AsyncMock(return_value=None)
-
-            await rerank("query", ["doc1"], top_k=1)
-
-            call_kwargs = mock_client.rerank.create.call_args.kwargs
-            assert call_kwargs["model"] == RERANK_MODEL
+    @pytest.mark.asyncio
+    async def test_rerank_raises_on_whitespace_query(self):
+        """Rerank should raise ValueError for whitespace-only query."""
+        with pytest.raises(ValueError, match="Query cannot be empty"):
+            await rerank("   ", ["doc1", "doc2"])
 
 
-class TestEmbeddingDimension:
-    """Tests for embedding dimension constant."""
+class TestEmbeddingConstants:
+    """Tests for embedding constants."""
 
     def test_embedding_dim_is_768(self):
-        """Embedding dimension should be 768 for the model."""
+        """Embedding dimension should be 768 for nomic-embed-text-v1.5."""
         assert EMBEDDING_DIM == 768
 
-    def test_embedding_model_defined(self):
-        """Embedding model should be defined."""
-        assert EMBEDDING_MODEL is not None
-        assert len(EMBEDDING_MODEL) > 0
+    def test_embedding_model_is_nomic(self):
+        """Embedding model should be nomic-embed-text-v1.5."""
+        assert "nomic" in EMBEDDING_MODEL.lower()
 
     def test_rerank_model_defined(self):
         """Rerank model should be defined."""

@@ -192,8 +192,8 @@ class TestProcessJob:
              patch("app.worker.get_file_info") as mock_get_file, \
              patch("app.worker.DriveService") as MockDrive, \
              patch("app.worker.ExtractionService") as MockExtraction, \
-             patch("app.worker.embed_text") as mock_embed_text, \
-             patch("app.worker.embed_batch") as mock_embed_batch, \
+             patch("app.worker.embed_document") as mock_embed_document, \
+             patch("app.worker.embed_documents_batch") as mock_embed_batch, \
              patch("app.worker.mark_job_completed") as mock_mark_completed, \
              patch("app.worker.update_folder_progress") as mock_update_progress:
 
@@ -211,7 +211,7 @@ class TestProcessJob:
             MockDrive.return_value = mock_drive_service
             MockExtraction.return_value = mock_extraction_service
 
-            mock_embed_text.return_value = [0.1] * 768
+            mock_embed_document.return_value = [0.1] * 768
             mock_embed_batch.return_value = [[0.1] * 768, [0.1] * 768]
 
             await process_job(job)

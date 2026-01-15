@@ -29,7 +29,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URI: http://localhost:8000/api/auth/google/callback
-      TOGETHER_API_KEY: ${TOGETHER_API_KEY}
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
       SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}

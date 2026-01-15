@@ -81,7 +81,7 @@ class TestChatEndpoint:
         mock_anthropic,
     ):
         """Test that chat creates a new conversation and returns streaming response."""
-        with patch("app.routes.chat.embed_text", mock_embedding_service["embed_text"]), \
+        with patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]), \
              patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
              patch("app.routes.chat.get_client", return_value=mock_anthropic):
 
@@ -116,7 +116,7 @@ class TestChatEndpoint:
         mock_anthropic,
     ):
         """Test that chat can continue an existing conversation."""
-        with patch("app.routes.chat.embed_text", mock_embedding_service["embed_text"]), \
+        with patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]), \
              patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
              patch("app.routes.chat.get_client", return_value=mock_anthropic):
 

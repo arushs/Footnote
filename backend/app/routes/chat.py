@@ -23,7 +23,7 @@ from app.models.db_models import (
     Session as DbSession,
 )
 from app.routes.auth import get_current_session
-from app.services.embedding import embed_text, rerank
+from app.services.embedding import embed_query, rerank
 
 router = APIRouter()
 
@@ -357,7 +357,7 @@ async def chat(
         await db.flush()
 
     # Generate query embedding
-    query_embedding = await embed_text(request.message)
+    query_embedding = await embed_query(request.message)
 
     # Retrieve relevant chunks
     chunks_with_files = await retrieve_chunks(db, folder_uuid, query_embedding)
@@ -719,7 +719,7 @@ async def chat_in_conversation(
         )
 
     # Generate query embedding
-    query_embedding = await embed_text(request.message)
+    query_embedding = await embed_query(request.message)
 
     # Retrieve relevant chunks from the folder
     chunks_with_files = await retrieve_chunks(db, folder.id, query_embedding)
