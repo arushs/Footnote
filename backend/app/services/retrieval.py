@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.embedding import embed_text, rerank
+from app.services.embedding import embed_query, rerank
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -107,7 +107,7 @@ async def retrieve_and_rerank(
         List of retrieved chunks ordered by rerank score
     """
     # Stage 1: Embed query and perform vector search
-    query_embedding = await embed_text(query)
+    query_embedding = await embed_query(query)
     candidates = await vector_search(db, query_embedding, folder_id, initial_top_k)
 
     if not candidates:
