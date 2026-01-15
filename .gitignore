@@ -20,6 +20,8 @@ build/
 *.tsbuildinfo
 *.d.ts
 !src/**/*.d.ts
+vite.config.js
+vite.config.d.ts
 
 # IDE
 .idea/

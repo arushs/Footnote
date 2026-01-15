@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
 import type { Message, Citation, ChatState } from '../types'
+import { addToast } from '../components/ui/toast'
 
 interface UseChatOptions {
   folderId: string
@@ -46,6 +47,7 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
       const response = await fetch(`/api/folders/${folderId}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           message: content,
           conversation_id: state.currentConversationId,
@@ -135,6 +137,8 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
       if ((error as Error).name === 'AbortError') return
 
       console.error('Chat error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to send message'
+      addToast(errorMessage, 'error')
       setState(prev => ({
         ...prev,
         isLoading: false,
@@ -155,7 +159,9 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
 
   const loadConversation = useCallback(async (conversationId: string) => {
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/messages`)
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+        credentials: 'include',
+      })
       if (!response.ok) throw new Error('Failed to load conversation')
 
       const messages: Message[] = await response.json()
@@ -166,6 +172,7 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
       }))
     } catch (error) {
       console.error('Failed to load conversation:', error)
+      addToast('Failed to load conversation', 'error')
     }
   }, [])
 
