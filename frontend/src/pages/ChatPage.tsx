@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
+import { FolderOpen, ArrowRight } from 'lucide-react'
 import { MessageList, MessageInput } from '../components/chat'
 import { ChatHistory } from '../components/sidebar'
 import { SourcesPanel } from '../components/sources'
@@ -8,6 +9,31 @@ import { AppShell } from '../components/layout/AppShell'
 import { Header, UserMenu } from '../components/layout/Header'
 import { useChat, useConversations, useFolderStatus } from '../hooks'
 import type { Citation } from '../types'
+
+function EmptyState() {
+  return (
+    <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="text-center max-w-md px-6">
+        <div className="mx-auto w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-6">
+          <FolderOpen className="w-8 h-8 text-muted-foreground" />
+        </div>
+        <h2 className="text-2xl font-semibold text-foreground mb-2">
+          No folder selected
+        </h2>
+        <p className="text-muted-foreground mb-6">
+          Select a Google Drive folder to start chatting with your documents.
+        </p>
+        <Link
+          to="/folders"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          Browse folders
+          <ArrowRight className="w-4 h-4" />
+        </Link>
+      </div>
+    </div>
+  )
+}
 
 export function ChatPage() {
   const { folderId } = useParams<{ folderId: string }>()
@@ -20,18 +46,19 @@ export function ChatPage() {
     setShowIndexingComplete(true)
   }, [])
 
-  // Folder status for indexing overlay
+  // Folder status for indexing overlay (only when folderId exists)
   const { folder, status, isIndexing } = useFolderStatus({
-    folderId: folderId!,
+    folderId: folderId || '',
     onIndexingComplete: handleIndexingComplete,
+    enabled: !!folderId,
   })
 
-  // Conversations for sidebar
+  // Conversations for sidebar (only when folderId exists)
   const {
     conversations,
     isLoading: conversationsLoading,
     refetch: refetchConversations,
-  } = useConversations({ folderId: folderId! })
+  } = useConversations({ folderId: folderId || '', enabled: !!folderId })
 
   // Handle sources update from chat
   const handleSourcesUpdate = useCallback(
@@ -44,7 +71,7 @@ export function ChatPage() {
     [refetchConversations]
   )
 
-  // Chat state and actions
+  // Chat state and actions (only when folderId exists)
   const {
     messages,
     isLoading: chatLoading,
@@ -55,8 +82,9 @@ export function ChatPage() {
     loadConversation,
     startNewConversation,
   } = useChat({
-    folderId: folderId!,
+    folderId: folderId || '',
     onSourcesUpdate: handleSourcesUpdate,
+    enabled: !!folderId,
   })
 
   // Handle citation click - open in Google Drive
@@ -81,6 +109,21 @@ export function ChatPage() {
     },
     [loadConversation]
   )
+
+  // Show empty state when no folder is selected
+  if (!folderId) {
+    return (
+      <AppShell>
+        <Header>
+          <Header.Brand title="Chat" backTo="/folders" backLabel="Folders" />
+          <Header.Actions>
+            <UserMenu />
+          </Header.Actions>
+        </Header>
+        <EmptyState />
+      </AppShell>
+    )
+  }
 
   return (
     <AppShell>

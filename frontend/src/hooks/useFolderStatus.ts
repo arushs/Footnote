@@ -5,9 +5,10 @@ interface UseFolderStatusOptions {
   folderId: string
   pollInterval?: number
   onIndexingComplete?: () => void
+  enabled?: boolean
 }
 
-export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingComplete }: UseFolderStatusOptions) {
+export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingComplete, enabled = true }: UseFolderStatusOptions) {
   const [folder, setFolder] = useState<Folder | null>(null)
   const [status, setStatus] = useState<FolderStatus | null>(null)
   const wasIndexingRef = useRef(false)
@@ -41,6 +42,11 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
   }, [folderId])
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false)
+      return
+    }
+
     let mounted = true
     let intervalId: ReturnType<typeof setInterval> | null = null
 
@@ -81,7 +87,7 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
       mounted = false
       if (intervalId) clearInterval(intervalId)
     }
-  }, [folderId, fetchFolder, fetchStatus, pollInterval])
+  }, [folderId, fetchFolder, fetchStatus, pollInterval, enabled])
 
   const isIndexing = status?.status === 'pending' || status?.status === 'indexing'
   const isReady = status?.status === 'ready'
