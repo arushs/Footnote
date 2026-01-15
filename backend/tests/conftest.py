@@ -238,7 +238,7 @@ async def test_chunks(db_session: AsyncSession, test_file: File) -> list[Chunk]:
         await db_session.execute(
             text("""
                 UPDATE chunks
-                SET chunk_embedding = :embedding::vector
+                SET chunk_embedding = CAST(:embedding AS vector)
                 WHERE id = :chunk_id
             """),
             {"embedding": embedding_str, "chunk_id": str(chunk.id)},
