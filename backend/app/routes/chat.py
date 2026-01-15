@@ -59,8 +59,26 @@ class ChatResponse(BaseModel):
 
 class ConversationPreview(BaseModel):
     id: str
+    title: str | None
     preview: str
     created_at: str
+    updated_at: str
+
+
+class ConversationCreate(BaseModel):
+    folder_id: str
+
+
+class ConversationUpdate(BaseModel):
+    title: str
+
+
+class ConversationResponse(BaseModel):
+    id: str
+    folder_id: str
+    title: str | None
+    created_at: str
+    updated_at: str
 
 
 def format_location(location: dict, mime_type: str) -> str:
@@ -411,8 +429,10 @@ async def list_conversations(
         previews.append(
             ConversationPreview(
                 id=str(conv.id),
+                title=conv.title,
                 preview=preview,
                 created_at=conv.created_at.isoformat(),
+                updated_at=conv.updated_at.isoformat(),
             )
         )
 
@@ -521,3 +541,205 @@ async def get_chunk_context(
             for c in surrounding_chunks
         ],
     }
+
+
+# Conversation-centric routes
+
+
+@router.post("/conversations", response_model=ConversationResponse)
+async def create_conversation(
+    request: ConversationCreate,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new conversation for a folder."""
+    try:
+        folder_uuid = uuid.UUID(request.folder_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder ID")
+
+    # Verify folder exists and belongs to user
+    result = await db.execute(
+        select(Folder).where(
+            Folder.id == folder_uuid,
+            Folder.user_id == session.user_id,
+        )
+    )
+    folder = result.scalar_one_or_none()
+
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    conversation = Conversation(folder_id=folder_uuid)
+    db.add(conversation)
+    await db.flush()
+
+    return ConversationResponse(
+        id=str(conversation.id),
+        folder_id=str(conversation.folder_id),
+        title=conversation.title,
+        created_at=conversation.created_at.isoformat(),
+        updated_at=conversation.updated_at.isoformat(),
+    )
+
+
+@router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def get_conversation(
+    conversation_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a conversation by ID."""
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.id == conv_uuid)
+        .options(selectinload(Conversation.folder))
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if conversation.folder.user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return ConversationResponse(
+        id=str(conversation.id),
+        folder_id=str(conversation.folder_id),
+        title=conversation.title,
+        created_at=conversation.created_at.isoformat(),
+        updated_at=conversation.updated_at.isoformat(),
+    )
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ConversationResponse)
+async def update_conversation(
+    conversation_id: str,
+    request: ConversationUpdate,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a conversation's title."""
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.id == conv_uuid)
+        .options(selectinload(Conversation.folder))
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if conversation.folder.user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    conversation.title = request.title
+    await db.flush()
+
+    return ConversationResponse(
+        id=str(conversation.id),
+        folder_id=str(conversation.folder_id),
+        title=conversation.title,
+        created_at=conversation.created_at.isoformat(),
+        updated_at=conversation.updated_at.isoformat(),
+    )
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a conversation and all its messages."""
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.id == conv_uuid)
+        .options(selectinload(Conversation.folder))
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if conversation.folder.user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    await db.delete(conversation)
+    return {"message": "Conversation deleted successfully"}
+
+
+@router.post("/conversations/{conversation_id}/chat")
+async def chat_in_conversation(
+    conversation_id: str,
+    request: ChatRequest,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message to an existing conversation."""
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+
+    # Get conversation with folder
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.id == conv_uuid)
+        .options(selectinload(Conversation.folder))
+    )
+    conversation = result.scalar_one_or_none()
+
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if conversation.folder.user_id != session.user_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    folder = conversation.folder
+    if folder.index_status != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail="Folder is still being indexed. Please wait.",
+        )
+
+    # Generate query embedding
+    query_embedding = await embed_text(request.message)
+
+    # Retrieve relevant chunks from the folder
+    chunks_with_files = await retrieve_chunks(db, folder.id, query_embedding)
+
+    # Get list of searched files (unique file names)
+    searched_files = list({file.file_name for _, file, _ in chunks_with_files})
+
+    # Rerank chunks
+    if chunks_with_files:
+        chunks_with_files = await rerank_chunks(request.message, chunks_with_files)
+
+    # Generate streaming response
+    return StreamingResponse(
+        generate_streaming_response(
+            db,
+            folder.id,
+            conversation,
+            request.message,
+            chunks_with_files,
+            searched_files,
+        ),
+        media_type="text/event-stream",
+    )
