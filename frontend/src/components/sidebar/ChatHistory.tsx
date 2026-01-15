@@ -6,7 +6,6 @@ import { cn } from '../../lib/utils'
 interface ChatHistoryProps {
   conversations: Conversation[]
   currentConversationId: string | null
-  folderName?: string
   isLoading?: boolean
   onSelectConversation: (id: string) => void
   onNewConversation: () => void
@@ -15,7 +14,6 @@ interface ChatHistoryProps {
 export function ChatHistory({
   conversations,
   currentConversationId,
-  folderName,
   isLoading,
   onSelectConversation,
   onNewConversation,
@@ -39,9 +37,7 @@ export function ChatHistory({
     <aside className="w-64 border-r border-border flex flex-col bg-muted/30" aria-label="Chat history">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <h2 className="font-semibold text-foreground truncate">
-          {folderName || 'Chat History'}
-        </h2>
+        <h2 className="font-semibold text-foreground">Chat History</h2>
       </div>
 
       {/* New Chat Button */}
