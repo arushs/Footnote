@@ -4,6 +4,8 @@ import { FolderOpen, Plus, Loader2, Trash2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useGooglePicker } from '../hooks/useGooglePicker'
 import { Button } from '../components/ui/button'
+import { addToast } from '../components/ui/toast'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
 
 interface Folder {
   id: string
@@ -21,6 +23,9 @@ export function FoldersPage() {
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [folderToDelete, setFolderToDelete] = useState<Folder | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const fetchFolders = async () => {
     try {
@@ -30,9 +35,12 @@ export function FoldersPage() {
       if (response.ok) {
         const data = await response.json()
         setFolders(data.folders)
+      } else {
+        addToast('Failed to load folders', 'error')
       }
     } catch (error) {
       console.error('Failed to fetch folders:', error)
+      addToast('Failed to load folders', 'error')
     } finally {
       setLoading(false)
     }
@@ -93,28 +101,46 @@ export function FoldersPage() {
       if (response.ok) {
         const newFolder = await response.json()
         setFolders((prev) => [...prev, newFolder])
+        addToast(`Added folder "${result.name}"`, 'success')
+      } else {
+        addToast('Failed to add folder', 'error')
       }
     } catch (error) {
       console.error('Failed to create folder:', error)
+      addToast('Failed to add folder', 'error')
     } finally {
       setCreating(false)
     }
   }
 
-  const handleDeleteFolder = async (folderId: string, e: React.MouseEvent) => {
+  const handleDeleteClick = (folder: Folder, e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this folder?')) return
+    setFolderToDelete(folder)
+    setDeleteDialogOpen(true)
+  }
 
+  const handleDeleteConfirm = async () => {
+    if (!folderToDelete) return
+
+    setDeleting(true)
     try {
-      const response = await fetch(`/api/folders/${folderId}`, {
+      const response = await fetch(`/api/folders/${folderToDelete.id}`, {
         method: 'DELETE',
         credentials: 'include',
       })
       if (response.ok) {
-        setFolders((prev) => prev.filter((f) => f.id !== folderId))
+        setFolders((prev) => prev.filter((f) => f.id !== folderToDelete.id))
+        addToast(`Deleted folder "${folderToDelete.folder_name}"`, 'success')
+        setDeleteDialogOpen(false)
+      } else {
+        addToast('Failed to delete folder', 'error')
       }
     } catch (error) {
       console.error('Failed to delete folder:', error)
+      addToast('Failed to delete folder', 'error')
+    } finally {
+      setDeleting(false)
+      setFolderToDelete(null)
     }
   }
 
@@ -200,7 +226,7 @@ export function FoldersPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => handleDeleteFolder(folder.id, e)}
+                      onClick={(e) => handleDeleteClick(folder, e)}
                     >
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
@@ -211,6 +237,18 @@ export function FoldersPage() {
           </div>
         )}
       </main>
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        title="Delete Folder"
+        description={`Are you sure you want to delete "${folderToDelete?.folder_name}"? All conversations and indexed data will be permanently removed.`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={handleDeleteConfirm}
+        isLoading={deleting}
+      />
     </div>
   )
 }

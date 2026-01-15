@@ -7,6 +7,7 @@ import { MessageList, MessageInput } from './components/chat'
 import { ChatHistory } from './components/sidebar'
 import { SourcesPanel } from './components/sources'
 import { IndexingProgress, IndexingComplete } from './components/overlay'
+import { ToastContainer } from './components/ui/toast'
 import { useChat, useConversations, useFolderStatus } from './hooks'
 import type { Citation } from './types'
 
@@ -32,6 +33,7 @@ function App() {
           }
         />
       </Routes>
+      <ToastContainer />
     </AuthProvider>
   )
 }
