@@ -186,28 +186,3 @@ async def get_folder_status(
     )
 
 
-@router.delete("/{folder_id}")
-async def delete_folder(
-    folder_id: str,
-    session: DbSession = Depends(get_current_session),
-    db: AsyncSession = Depends(get_db),
-):
-    """Delete a folder and all its associated data."""
-    try:
-        folder_uuid = uuid.UUID(folder_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
-
-    result = await db.execute(
-        select(Folder).where(
-            Folder.id == folder_uuid,
-            Folder.user_id == session.user_id,
-        )
-    )
-    folder = result.scalar_one_or_none()
-
-    if not folder:
-        raise HTTPException(status_code=404, detail="Folder not found")
-
-    await db.delete(folder)
-    return {"message": "Folder deleted successfully"}

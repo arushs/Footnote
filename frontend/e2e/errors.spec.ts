@@ -29,61 +29,6 @@ test.describe('Error Handling', () => {
     })
   })
 
-  test('shows error for inaccessible folder', async ({ page }) => {
-    // Mock folders list with empty
-    await page.route('**/api/folders', async (route) => {
-      if (route.request().method() === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ folders: [] }),
-        })
-      } else if (route.request().method() === 'POST') {
-        // Mock 403 error when trying to add a folder
-        await route.fulfill({
-          status: 403,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            error: 'Access denied',
-            message: 'You do not have access to this folder',
-          }),
-        })
-      }
-    })
-
-    // Navigate to folders page
-    await page.goto('/folders')
-    await expect(page.locator('h2:has-text("Your Folders")')).toBeVisible()
-
-    // Should show empty state
-    await expect(page.locator('text=No folders yet')).toBeVisible()
-  })
-
-  test('shows failed status for folder with indexing error', async ({ page }) => {
-    // Mock folders list with a failed folder
-    await page.route('**/api/folders', async (route) => {
-      if (route.request().method() === 'GET') {
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            folders: [{
-              ...mockFolder,
-              index_status: 'failed',
-            }],
-          }),
-        })
-      }
-    })
-
-    // Navigate to folders page
-    await page.goto('/folders')
-
-    // Should show the folder with failed status
-    await expect(page.locator('text=Test Folder')).toBeVisible()
-    await expect(page.locator('text=Failed')).toBeVisible()
-  })
-
   test('handles grounding failure gracefully', async ({ page }) => {
     // Set up route handlers - order matters, most specific first
 

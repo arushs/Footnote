@@ -255,7 +255,7 @@ export function ChatPage() {
     return (
       <AppShell>
         <Header>
-          <Header.Brand title="Chat" backTo="/folders" backLabel="Folders" />
+          <Header.Brand title="Chat" />
           <Header.Actions>
             <UserMenu />
           </Header.Actions>
@@ -269,7 +269,7 @@ export function ChatPage() {
     <AppShell>
       {/* Header */}
       <Header>
-        <Header.Brand title={folder?.folder_name || 'Chat'} backTo="/folders" backLabel="Folders" />
+        <Header.Brand title={folder?.folder_name || 'Chat'} />
         <Header.Actions>
           <UserMenu />
         </Header.Actions>

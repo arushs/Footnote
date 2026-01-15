@@ -183,19 +183,19 @@ describe('Header', () => {
       render(
         <RouterWrapper>
           <Header>
-            <Header.Brand backTo="/folders" backLabel="Folders" />
+            <Header.Brand backTo="/" backLabel="Home" />
           </Header>
         </RouterWrapper>
       )
 
-      expect(screen.getByText('Folders')).toBeInTheDocument()
+      expect(screen.getByText('Home')).toBeInTheDocument()
     })
 
     it('should render default back label', () => {
       render(
         <RouterWrapper>
           <Header>
-            <Header.Brand backTo="/folders" />
+            <Header.Brand backTo="/" />
           </Header>
         </RouterWrapper>
       )
@@ -203,7 +203,7 @@ describe('Header', () => {
       expect(screen.getByText('Back')).toBeInTheDocument()
     })
 
-    it('should link to folders page', () => {
+    it('should link to chat page', () => {
       render(
         <RouterWrapper>
           <Header>
@@ -213,7 +213,7 @@ describe('Header', () => {
       )
 
       const link = screen.getByRole('link')
-      expect(link).toHaveAttribute('href', '/folders')
+      expect(link).toHaveAttribute('href', '/chat')
     })
   })
 
