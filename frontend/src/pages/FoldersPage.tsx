@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FolderOpen, Plus, Loader2, Trash2 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { useGooglePicker } from '../hooks/useGooglePicker'
+import { useGooglePicker } from '../hooks'
 import { Button } from '../components/ui/button'
 import { addToast } from '../components/ui/toast'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
@@ -19,7 +19,7 @@ interface Folder {
 export function FoldersPage() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
-  const { isLoaded, openPicker } = useGooglePicker()
+  const { isLoaded, isConfigured, error: _pickerError, openPicker } = useGooglePicker()
   const [folders, setFolders] = useState<Folder[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -81,7 +81,14 @@ export function FoldersPage() {
   }, [folders])
 
   const handleAddFolder = async () => {
-    if (!isLoaded) return
+    if (!isConfigured) {
+      addToast('Google Drive integration not configured', 'error')
+      return
+    }
+    if (!isLoaded) {
+      addToast('Google APIs still loading, please wait...', 'error')
+      return
+    }
 
     try {
       const result = await openPicker()
@@ -166,7 +173,7 @@ export function FoldersPage() {
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-medium text-foreground">Your Folders</h2>
-          <Button onClick={handleAddFolder} disabled={!isLoaded || creating}>
+          <Button onClick={handleAddFolder} disabled={!isConfigured || !isLoaded || creating}>
             {creating ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -184,7 +191,7 @@ export function FoldersPage() {
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <FolderOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground mb-4">No folders yet</p>
-            <Button onClick={handleAddFolder} disabled={!isLoaded}>
+            <Button onClick={handleAddFolder} disabled={!isConfigured || !isLoaded}>
               <Plus className="h-4 w-4 mr-2" />
               Add your first folder
             </Button>

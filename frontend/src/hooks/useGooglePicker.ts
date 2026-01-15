@@ -80,9 +80,20 @@ interface PickerData {
 
 export function useGooglePicker() {
   const [isLoaded, setIsLoaded] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [accessToken, setAccessToken] = useState<string | null>(null)
 
+  // Check if API keys are configured
+  const isConfigured = Boolean(GOOGLE_API_KEY && GOOGLE_CLIENT_ID)
+
   useEffect(() => {
+    // Validate configuration
+    if (!GOOGLE_API_KEY || !GOOGLE_CLIENT_ID) {
+      setError('Google API key or Client ID not configured')
+      console.error('Missing VITE_GOOGLE_API_KEY or VITE_GOOGLE_CLIENT_ID environment variables')
+      return
+    }
+
     // Load the Google API script
     const loadScript = (src: string, id: string): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -96,7 +107,7 @@ export function useGooglePicker() {
         script.async = true
         script.defer = true
         script.onload = () => resolve()
-        script.onerror = reject
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`))
         document.body.appendChild(script)
       })
     }
@@ -115,8 +126,11 @@ export function useGooglePicker() {
         })
 
         setIsLoaded(true)
-      } catch (error) {
-        console.error('Failed to load Google APIs:', error)
+        setError(null)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load Google APIs'
+        setError(message)
+        console.error('Failed to load Google APIs:', err)
       }
     }
 
@@ -186,6 +200,8 @@ export function useGooglePicker() {
 
   return {
     isLoaded,
+    isConfigured,
+    error,
     openPicker,
   }
 }
