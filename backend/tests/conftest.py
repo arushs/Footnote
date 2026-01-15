@@ -400,28 +400,26 @@ def mock_embedding_service():
 @pytest.fixture
 def mock_anthropic():
     """Mock Anthropic Claude API for chat responses."""
-    with patch("anthropic.AsyncAnthropic") as MockAnthropic:
-        mock_client = MagicMock()
-        MockAnthropic.return_value = mock_client
+    mock_client = MagicMock()
 
-        # Create a mock stream that yields tokens
-        class MockStream:
-            async def __aenter__(self):
-                return self
+    # Create a mock stream that yields tokens
+    class MockStream:
+        async def __aenter__(self):
+            return self
 
-            async def __aexit__(self, *args):
-                pass
+        async def __aexit__(self, *args):
+            pass
 
-            @property
-            def text_stream(self):
-                async def gen():
-                    for token in ["This ", "is ", "a ", "test ", "response. ", "[1]"]:
-                        yield token
-                return gen()
+        @property
+        def text_stream(self):
+            async def gen():
+                for token in ["This ", "is ", "a ", "test ", "response. ", "[1]"]:
+                    yield token
+            return gen()
 
-        mock_client.messages.stream.return_value = MockStream()
+    mock_client.messages.stream.return_value = MockStream()
 
-        yield mock_client
+    yield mock_client
 
 
 @pytest.fixture
