@@ -1,64 +1,62 @@
-"""Embedding service using Together AI (Nomic-embed-text-v1.5)."""
+"""Embedding service using Together AI SDK."""
 
-import httpx
+from together import AsyncTogether
 
 from app.config import settings
 
 
-TOGETHER_API_URL = "https://api.together.xyz/v1/embeddings"
-EMBEDDING_MODEL = "togethercomputer/m2-bert-80M-8k-retrieval"  # or nomic-embed-text-v1.5
+EMBEDDING_MODEL = "togethercomputer/m2-bert-80M-8k-retrieval"
+RERANK_MODEL = "Salesforce/Llama-Rank-V1"
 EMBEDDING_DIM = 768
+
+_client: AsyncTogether | None = None
+
+
+def get_client() -> AsyncTogether:
+    """Get or create the AsyncTogether client."""
+    global _client
+    if _client is None:
+        _client = AsyncTogether(api_key=settings.together_api_key)
+    return _client
 
 
 async def embed_text(text: str) -> list[float]:
     """Generate embedding for a single text."""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            TOGETHER_API_URL,
-            headers={"Authorization": f"Bearer {settings.together_api_key}"},
-            json={
-                "model": EMBEDDING_MODEL,
-                "input": text,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    return data["data"][0]["embedding"]
+    client = get_client()
+    response = await client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
+    )
+    return response.data[0].embedding
 
 
 async def embed_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for a batch of texts."""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            TOGETHER_API_URL,
-            headers={"Authorization": f"Bearer {settings.together_api_key}"},
-            json={
-                "model": EMBEDDING_MODEL,
-                "input": texts,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    return [item["embedding"] for item in data["data"]]
+    client = get_client()
+    response = await client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=texts,
+    )
+    # Sort by index to maintain order
+    sorted_data = sorted(response.data, key=lambda x: x.index)
+    return [item.embedding for item in sorted_data]
 
 
 async def rerank(query: str, documents: list[str], top_k: int = 15) -> list[tuple[int, float]]:
-    """Rerank documents using BGE reranker via Together AI."""
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "https://api.together.xyz/v1/rerank",
-            headers={"Authorization": f"Bearer {settings.together_api_key}"},
-            json={
-                "model": "Salesforce/Llama-Rank-V1",
-                "query": query,
-                "documents": documents,
-                "top_n": top_k,
-                "return_documents": False,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
+    """Rerank documents using Together AI reranker."""
+    client = get_client()
+    response = await client.rerank.create(
+        model=RERANK_MODEL,
+        query=query,
+        documents=documents,
+        top_n=top_k,
+    )
+    return [(item.index, item.relevance_score) for item in response.results]
 
-    return [(item["index"], item["relevance_score"]) for item in data["results"]]
+
+async def close_client() -> None:
+    """Close the client connection (call on shutdown)."""
+    global _client
+    if _client is not None:
+        await _client.close()
+        _client = None

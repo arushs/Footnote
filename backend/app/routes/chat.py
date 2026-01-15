@@ -1,6 +1,15 @@
-from fastapi import APIRouter, HTTPException
+"""Chat routes with RAG-based responses."""
+
+import json
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.services import rag
 
 router = APIRouter()
 
@@ -36,19 +45,32 @@ class ConversationPreview(BaseModel):
 
 
 @router.post("/folders/{folder_id}/chat")
-async def chat(folder_id: str, request: ChatRequest):
-    """Send a message and get a streaming response."""
-    # TODO: Implement retrieval and generation with streaming
+async def chat(
+    folder_id: str,
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send a message and get a streaming RAG response."""
+    try:
+        folder_uuid = UUID(folder_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder ID")
 
     async def generate():
-        yield 'data: {"token": "This"}\n\n'
-        yield 'data: {"token": " is"}\n\n'
-        yield 'data: {"token": " a"}\n\n'
-        yield 'data: {"token": " placeholder"}\n\n'
-        yield 'data: {"token": " response."}\n\n'
-        yield 'data: {"done": true, "citations": {}}\n\n'
+        try:
+            async for chunk in rag.answer_stream(db, folder_uuid, request.message):
+                yield f"data: {json.dumps(chunk)}\n\n"
+        except Exception as e:
+            yield f'data: {{"error": "An error occurred: {str(e)}"}}\n\n'
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/folders/{folder_id}/conversations")
