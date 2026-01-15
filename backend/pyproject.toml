@@ -1,0 +1,43 @@
+[project]
+name = "mayor-backend"
+version = "0.1.0"
+description = "Talk to Folder - RAG backend for Google Drive"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "python-multipart==0.0.20",
+    # Database
+    "asyncpg==0.30.0",
+    "sqlalchemy[asyncio]==2.0.36",
+    "pgvector==0.3.6",
+    # Google APIs
+    "google-auth==2.37.0",
+    "google-auth-oauthlib==1.2.1",
+    "google-api-python-client==2.159.0",
+    # HTTP client
+    "httpx==0.28.1",
+    # AI/ML
+    "anthropic==0.42.0",
+    "together>=1.3.0",
+    "mistralai>=1.0.0",
+    "tiktoken==0.8.0",
+    # Utils
+    "python-dotenv==1.0.1",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.1",
+    # HTML parsing
+    "beautifulsoup4==4.12.3",
+    "lxml==5.3.0",
+    # Security
+    "cryptography==44.0.0",
+    "python-jose[cryptography]==3.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
