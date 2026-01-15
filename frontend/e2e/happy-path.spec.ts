@@ -86,7 +86,7 @@ test.describe('Talk to Folder - Happy Path', () => {
     })
   })
 
-  test('can select folder and ask question', async ({ page }) => {
+  test('can select folder from dropdown and ask question', async ({ page }) => {
     // Mock chat streaming response
     await page.route('**/api/folders/*/chat', async (route) => {
       const sseResponse = [
@@ -105,18 +105,22 @@ test.describe('Talk to Folder - Happy Path', () => {
       })
     })
 
-    // Navigate to folders page
-    await page.goto('/folders')
-    await expect(page.locator('h2:has-text("Your Folders")')).toBeVisible()
+    // Navigate to chat page (empty state)
+    await page.goto('/chat')
 
-    // Should show the test folder
-    await expect(page.locator('text=Test Folder')).toBeVisible()
-    await expect(page.locator('text=Ready')).toBeVisible()
+    // Should show empty state with folder dropdown
+    await expect(page.locator('h2:has-text("How can I help you?")')).toBeVisible()
 
-    // Click on the folder to go to chat
-    await page.click('text=Test Folder')
+    // Open the folder dropdown
+    await page.click('button:has-text("Select a folder...")')
 
-    // Should navigate to chat page
+    // Should show the test folder in dropdown
+    await expect(page.locator('[role="menuitem"]:has-text("Test Folder")')).toBeVisible()
+
+    // Select the folder
+    await page.click('[role="menuitem"]:has-text("Test Folder")')
+
+    // Should navigate to chat page with folder
     await expect(page).toHaveURL(/\/chat\/test-folder-id/)
 
     // Wait for chat interface to load

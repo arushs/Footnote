@@ -127,7 +127,6 @@ describe('useChat', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: 'Test message',
-            conversation_id: null,
           }),
         })
       )

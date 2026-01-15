@@ -56,12 +56,12 @@ async def vector_search(
                 c.location,
                 f.file_name,
                 f.google_file_id,
-                1 - (c.chunk_embedding <=> :query_embedding::vector) as similarity
+                1 - (c.chunk_embedding <=> CAST(:query_embedding AS vector)) as similarity
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
               AND c.chunk_embedding IS NOT NULL
-            ORDER BY c.chunk_embedding <=> :query_embedding::vector
+            ORDER BY c.chunk_embedding <=> CAST(:query_embedding AS vector)
             LIMIT :top_k
         """),
         {

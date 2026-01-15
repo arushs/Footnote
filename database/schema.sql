@@ -92,7 +92,9 @@ CREATE INDEX idx_chunks_embedding ON chunks
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     folder_id UUID REFERENCES folders(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    title TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_conversations_folder_id ON conversations(folder_id);
@@ -118,8 +120,9 @@ CREATE TABLE indexing_jobs (
     status TEXT DEFAULT 'pending',  -- pending, processing, completed, failed
     priority INT DEFAULT 0,  -- Higher = process first
     attempts INT DEFAULT 0,
-    max_attempts INT DEFAULT 3,
+    max_attempts INT DEFAULT 5,  -- Increased for better resilience
     last_error TEXT,
+    retry_after TIMESTAMPTZ,  -- Don't retry until this time (exponential backoff)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ
