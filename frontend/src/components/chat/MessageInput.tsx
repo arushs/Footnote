@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Send, Square } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-interface MessageInputProps {
+export interface MessageInputProps {
   onSend: (message: string) => void
   onStop?: () => void
   isLoading?: boolean

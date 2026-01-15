@@ -4,7 +4,7 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import type { Message, Citation } from '../../types'
 import { cn } from '../../lib/utils'
 
-interface ChatMessageProps {
+export interface ChatMessageProps {
   message: Message
   onCitationClick?: (citation: Citation) => void
 }
