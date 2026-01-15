@@ -103,7 +103,7 @@ async def google_callback(
     await db.flush()
 
     # Set session cookie (using session ID as the cookie value)
-    redirect = RedirectResponse(url=f"{settings.frontend_url}/folders", status_code=302)
+    redirect = RedirectResponse(url=f"{settings.frontend_url}/chat", status_code=302)
     redirect.set_cookie(
         key="session_id",
         value=str(session.id),
