@@ -3,14 +3,17 @@ import type { Conversation } from '../types'
 
 interface UseConversationsOptions {
   folderId: string
+  enabled?: boolean
 }
 
-export function useConversations({ folderId }: UseConversationsOptions) {
+export function useConversations({ folderId, enabled = true }: UseConversationsOptions) {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchConversations = useCallback(async () => {
+    if (!enabled) return
+
     try {
       setIsLoading(true)
       const response = await fetch(`/api/folders/${folderId}/conversations`)
@@ -23,11 +26,15 @@ export function useConversations({ folderId }: UseConversationsOptions) {
     } finally {
       setIsLoading(false)
     }
-  }, [folderId])
+  }, [folderId, enabled])
 
   useEffect(() => {
+    if (!enabled) {
+      setIsLoading(false)
+      return
+    }
     fetchConversations()
-  }, [fetchConversations])
+  }, [fetchConversations, enabled])
 
   return {
     conversations,

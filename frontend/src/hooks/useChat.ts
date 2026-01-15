@@ -5,9 +5,10 @@ import { addToast } from '../components/ui/toast'
 interface UseChatOptions {
   folderId: string
   onSourcesUpdate?: (searchedFiles: string[], citations: Record<string, Citation>) => void
+  enabled?: boolean
 }
 
-export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
+export function useChat({ folderId, onSourcesUpdate, enabled = true }: UseChatOptions) {
   const [state, setState] = useState<ChatState>({
     messages: [],
     isLoading: false,
@@ -19,7 +20,7 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const sendMessage = useCallback(async (content: string) => {
-    if (!content.trim() || state.isLoading) return
+    if (!enabled || !content.trim() || state.isLoading) return
 
     // Add user message
     const userMessage: Message = {
@@ -145,7 +146,7 @@ export function useChat({ folderId, onSourcesUpdate }: UseChatOptions) {
         streamingContent: '',
       }))
     }
-  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate])
+  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate, enabled])
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
