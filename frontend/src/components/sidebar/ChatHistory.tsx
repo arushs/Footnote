@@ -36,7 +36,7 @@ export function ChatHistory({
   }
 
   return (
-    <aside className="w-64 border-r border-border flex flex-col bg-muted/30">
+    <aside className="w-64 border-r border-border flex flex-col bg-muted/30" aria-label="Chat history">
       {/* Header */}
       <div className="p-4 border-b border-border">
         <h2 className="font-semibold text-foreground truncate">
@@ -52,10 +52,11 @@ export function ChatHistory({
             'w-full flex items-center gap-2 px-3 py-2 rounded-lg',
             'bg-primary text-primary-foreground',
             'hover:bg-primary/90 transition-colors',
-            'text-sm font-medium'
+            'text-sm font-medium',
+            'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2'
           )}
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4" aria-hidden="true" />
           New Chat
         </button>
       </div>
@@ -75,7 +76,7 @@ export function ChatHistory({
               </div>
             ) : conversations.length === 0 ? (
               <div className="text-center py-8 px-4">
-                <MessageSquare className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <MessageSquare className="h-8 w-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
                 <p className="text-sm text-muted-foreground">
                   No conversations yet
                 </p>
@@ -125,12 +126,14 @@ function ConversationItem({
         'hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring',
         isActive ? 'bg-muted' : ''
       )}
+      aria-current={isActive ? 'true' : undefined}
+      aria-label={`${conversation.preview || 'New conversation'}, ${formatDate(conversation.created_at)}`}
     >
       <p className="text-sm font-medium text-foreground line-clamp-1">
         {conversation.preview || 'New conversation'}
       </p>
       <div className="flex items-center gap-1 mt-1">
-        <Clock className="h-3 w-3 text-muted-foreground" />
+        <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">
           {formatDate(conversation.created_at)}
         </span>

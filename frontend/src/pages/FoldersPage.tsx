@@ -175,67 +175,74 @@ export function FoldersPage() {
           <h2 className="text-lg font-medium text-foreground">Your Folders</h2>
           <Button onClick={handleAddFolder} disabled={!isConfigured || !isLoaded || creating}>
             {creating ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
             ) : (
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
             )}
-            Add Folder
+            {creating ? 'Adding...' : 'Add Folder'}
           </Button>
         </div>
 
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <div className="flex items-center justify-center py-12" role="status" aria-label="Loading folders">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" aria-hidden="true" />
           </div>
         ) : folders.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
-            <FolderOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <FolderOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" aria-hidden="true" />
             <p className="text-muted-foreground mb-4">No folders yet</p>
             <Button onClick={handleAddFolder} disabled={!isConfigured || !isLoaded}>
-              <Plus className="h-4 w-4 mr-2" />
+              <Plus className="h-4 w-4 mr-2" aria-hidden="true" />
               Add your first folder
             </Button>
           </div>
         ) : (
-          <div className="grid gap-4">
+          <div className="grid gap-4" role="list" aria-label="Folders">
             {folders.map((folder) => (
               <div
                 key={folder.id}
-                onClick={() => folder.index_status === 'ready' && navigate(`/chat/${folder.id}`)}
-                className={`
-                  p-4 border border-border rounded-lg
-                  ${folder.index_status === 'ready' ? 'cursor-pointer hover:bg-accent' : 'opacity-75'}
-                `}
+                role="listitem"
+                className="p-4 border border-border rounded-lg"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <FolderOpen className="h-5 w-5 text-muted-foreground" />
+                  <button
+                    onClick={() => folder.index_status === 'ready' && navigate(`/chat/${folder.id}`)}
+                    disabled={folder.index_status !== 'ready'}
+                    className={`
+                      flex items-center gap-3 text-left flex-1
+                      ${folder.index_status === 'ready' ? 'cursor-pointer hover:opacity-80' : 'opacity-75 cursor-not-allowed'}
+                      focus:outline-none focus:ring-2 focus:ring-ring rounded-md p-1 -m-1
+                    `}
+                    aria-label={`${folder.folder_name}, ${folder.files_indexed} of ${folder.files_total} files indexed, status: ${folder.index_status}`}
+                  >
+                    <FolderOpen className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
                     <div>
                       <p className="font-medium text-foreground">{folder.folder_name}</p>
                       <p className="text-sm text-muted-foreground">
                         {folder.files_indexed} / {folder.files_total} files indexed
                       </p>
                     </div>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2">
                     {folder.index_status === 'indexing' && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Indexing...
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                        <span>Indexing...</span>
                       </div>
                     )}
                     {folder.index_status === 'ready' && (
-                      <span className="text-sm text-green-600">Ready</span>
+                      <span className="text-sm text-green-600" role="status">Ready</span>
                     )}
                     {folder.index_status === 'failed' && (
-                      <span className="text-sm text-red-600">Failed</span>
+                      <span className="text-sm text-red-600" role="status">Failed</span>
                     )}
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={(e) => handleDeleteClick(folder, e)}
+                      aria-label={`Delete folder ${folder.folder_name}`}
                     >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      <Trash2 className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     </Button>
                   </div>
                 </div>

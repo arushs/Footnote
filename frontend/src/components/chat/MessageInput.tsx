@@ -55,6 +55,7 @@ export function MessageInput({
           placeholder={placeholder}
           disabled={disabled}
           rows={1}
+          aria-label="Message input"
           className={cn(
             'flex-1 resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm',
             'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
@@ -67,9 +68,9 @@ export function MessageInput({
             type="button"
             onClick={onStop}
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-            title="Stop generation"
+            aria-label="Stop generation"
           >
-            <Square className="h-4 w-4" />
+            <Square className="h-4 w-4" aria-hidden="true" />
           </button>
         ) : (
           <button
@@ -81,9 +82,9 @@ export function MessageInput({
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90'
                 : 'bg-muted text-muted-foreground cursor-not-allowed'
             )}
-            title="Send message"
+            aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4" aria-hidden="true" />
           </button>
         )}
       </div>
