@@ -4,6 +4,8 @@ import { MessageList, MessageInput } from '../components/chat'
 import { ChatHistory } from '../components/sidebar'
 import { SourcesPanel } from '../components/sources'
 import { IndexingProgress, IndexingComplete } from '../components/overlay'
+import { AppShell } from '../components/layout/AppShell'
+import { Header, UserMenu } from '../components/layout/Header'
 import { useChat, useConversations, useFolderStatus } from '../hooks'
 import type { Citation } from '../types'
 
@@ -81,7 +83,15 @@ export function ChatPage() {
   )
 
   return (
-    <div className="min-h-screen flex bg-background relative">
+    <AppShell>
+      {/* Header */}
+      <Header>
+        <Header.Brand title={folder?.folder_name || 'Chat'} backTo="/folders" backLabel="Folders" />
+        <Header.Actions>
+          <UserMenu />
+        </Header.Actions>
+      </Header>
+
       {/* Indexing overlay */}
       {status && isIndexing && (
         <IndexingProgress status={status} folderName={folder?.folder_name} />
@@ -92,43 +102,45 @@ export function ChatPage() {
         <IndexingComplete onDismiss={() => setShowIndexingComplete(false)} />
       )}
 
-      {/* Left sidebar - Chat History */}
-      <ChatHistory
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        folderName={folder?.folder_name}
-        isLoading={conversationsLoading}
-        onSelectConversation={handleSelectConversation}
-        onNewConversation={handleNewConversation}
-      />
-
-      {/* Main chat area */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <MessageList
-          messages={messages}
-          streamingContent={streamingContent}
-          isLoading={chatLoading}
-          onCitationClick={handleCitationClick}
+      {/* Main content area */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar - Chat History */}
+        <ChatHistory
+          conversations={conversations}
+          currentConversationId={currentConversationId}
+          isLoading={conversationsLoading}
+          onSelectConversation={handleSelectConversation}
+          onNewConversation={handleNewConversation}
         />
-        <MessageInput
-          onSend={sendMessage}
-          onStop={stopGeneration}
-          isLoading={chatLoading}
-          disabled={isIndexing}
-          placeholder={
-            isIndexing
-              ? 'Please wait for indexing to complete...'
-              : 'Ask about your files...'
-          }
-        />
-      </main>
 
-      {/* Right sidebar - Sources */}
-      <SourcesPanel
-        searchedFiles={searchedFiles}
-        citedSources={citedSources}
-        onSourceClick={handleCitationClick}
-      />
-    </div>
+        {/* Main chat area */}
+        <main className="flex-1 flex flex-col min-w-0">
+          <MessageList
+            messages={messages}
+            streamingContent={streamingContent}
+            isLoading={chatLoading}
+            onCitationClick={handleCitationClick}
+          />
+          <MessageInput
+            onSend={sendMessage}
+            onStop={stopGeneration}
+            isLoading={chatLoading}
+            disabled={isIndexing}
+            placeholder={
+              isIndexing
+                ? 'Please wait for indexing to complete...'
+                : 'Ask about your files...'
+            }
+          />
+        </main>
+
+        {/* Right sidebar - Sources */}
+        <SourcesPanel
+          searchedFiles={searchedFiles}
+          citedSources={citedSources}
+          onSourceClick={handleCitationClick}
+        />
+      </div>
+    </AppShell>
   )
 }
