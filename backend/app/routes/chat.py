@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.models.db_models import Session as DbSession
+from app.routes.auth import get_current_session
 from app.services.retrieval import retrieve_and_rerank, format_context_for_llm
 
 import anthropic
@@ -62,18 +64,33 @@ The context below contains excerpts from the user's Google Drive documents, with
 
 
 @router.post("/folders/{folder_id}/chat")
-async def chat(folder_id: str, request: ChatRequest, db: AsyncSession = Depends(get_db)):
+async def chat(
+    folder_id: str,
+    request: ChatRequest,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
     """Send a message and get a streaming response with citations."""
-    folder_uuid = uuid.UUID(folder_id)
+    try:
+        folder_uuid = uuid.UUID(folder_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder ID")
 
-    # Verify folder exists
+    # Verify folder exists and belongs to user
     result = await db.execute(
-        text("SELECT id, index_status FROM folders WHERE id = :folder_id"),
-        {"folder_id": folder_id},
+        text("SELECT id, index_status FROM folders WHERE id = :folder_id AND user_id = :user_id"),
+        {"folder_id": folder_id, "user_id": str(session.user_id)},
     )
     folder = result.first()
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
+
+    # Check if folder is ready for chat
+    if folder.index_status != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Folder is not ready for chat (status: {folder.index_status})"
+        )
 
     # Get or create conversation
     if request.conversation_id:
@@ -121,7 +138,7 @@ async def chat(folder_id: str, request: ChatRequest, db: AsyncSession = Depends(
             google_drive_url=drive_url,
         )
 
-    # Save user message
+    # Save user message and commit (important to persist before streaming)
     await db.execute(
         text("""
             INSERT INTO messages (id, conversation_id, role, content)
@@ -129,6 +146,7 @@ async def chat(folder_id: str, request: ChatRequest, db: AsyncSession = Depends(
         """),
         {"id": str(uuid.uuid4()), "conv_id": str(conv_id), "content": request.message},
     )
+    await db.commit()
 
     async def generate():
         """Stream the response from Anthropic."""
@@ -186,8 +204,25 @@ User question: {request.message}"""
 
 
 @router.get("/folders/{folder_id}/conversations")
-async def list_conversations(folder_id: str, db: AsyncSession = Depends(get_db)) -> list[ConversationPreview]:
+async def list_conversations(
+    folder_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+) -> list[ConversationPreview]:
     """List all conversations for a folder."""
+    try:
+        folder_uuid = uuid.UUID(folder_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder ID")
+
+    # Verify folder belongs to user
+    result = await db.execute(
+        text("SELECT id FROM folders WHERE id = :folder_id AND user_id = :user_id"),
+        {"folder_id": folder_id, "user_id": str(session.user_id)},
+    )
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Folder not found")
+
     result = await db.execute(
         text("""
             SELECT
@@ -227,8 +262,29 @@ class MessageResponse(BaseModel):
 
 
 @router.get("/conversations/{conversation_id}/messages")
-async def get_conversation_messages(conversation_id: str, db: AsyncSession = Depends(get_db)) -> list[MessageResponse]:
+async def get_conversation_messages(
+    conversation_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+) -> list[MessageResponse]:
     """Get all messages in a conversation."""
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+
+    # Verify conversation belongs to user's folder
+    result = await db.execute(
+        text("""
+            SELECT c.id FROM conversations c
+            JOIN folders f ON c.folder_id = f.id
+            WHERE c.id = :conv_id AND f.user_id = :user_id
+        """),
+        {"conv_id": conversation_id, "user_id": str(session.user_id)},
+    )
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
     result = await db.execute(
         text("""
             SELECT id, role, content, citations, created_at
@@ -241,7 +297,8 @@ async def get_conversation_messages(conversation_id: str, db: AsyncSession = Dep
 
     rows = result.fetchall()
     if not rows:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+        # Return empty list for new conversations with no messages
+        return []
 
     return [
         MessageResponse(
@@ -264,17 +321,27 @@ class ChunkContextResponse(BaseModel):
 
 
 @router.get("/chunks/{chunk_id}/context")
-async def get_chunk_context(chunk_id: str, db: AsyncSession = Depends(get_db)) -> ChunkContextResponse:
+async def get_chunk_context(
+    chunk_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+) -> ChunkContextResponse:
     """Get surrounding context for a chunk (for citations)."""
-    # Get the target chunk
+    try:
+        chunk_uuid = uuid.UUID(chunk_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid chunk ID")
+
+    # Get the target chunk and verify ownership
     result = await db.execute(
         text("""
             SELECT c.id, c.file_id, c.chunk_text, c.location, c.chunk_index, f.file_name
             FROM chunks c
             JOIN files f ON c.file_id = f.id
-            WHERE c.id = :chunk_id
+            JOIN folders fo ON f.folder_id = fo.id
+            WHERE c.id = :chunk_id AND fo.user_id = :user_id
         """),
-        {"chunk_id": chunk_id},
+        {"chunk_id": chunk_id, "user_id": str(session.user_id)},
     )
     chunk = result.first()
 
