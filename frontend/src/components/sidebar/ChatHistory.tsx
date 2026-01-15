@@ -2,10 +2,12 @@ import { Plus, MessageSquare, Clock } from 'lucide-react'
 import * as ScrollArea from '@radix-ui/react-scroll-area'
 import type { Conversation } from '../../types'
 import { cn } from '../../lib/utils'
+import { AddFolderDropdown } from './AddFolderDropdown'
 
 interface ChatHistoryProps {
   conversations: Conversation[]
   currentConversationId: string | null
+  folderName?: string
   isLoading?: boolean
   onSelectConversation: (id: string) => void
   onNewConversation: () => void
@@ -14,6 +16,7 @@ interface ChatHistoryProps {
 export function ChatHistory({
   conversations,
   currentConversationId,
+  folderName,
   isLoading,
   onSelectConversation,
   onNewConversation,
@@ -37,7 +40,12 @@ export function ChatHistory({
     <aside className="w-64 border-r border-border flex flex-col bg-muted/30" aria-label="Chat history">
       {/* Header */}
       <div className="p-4 border-b border-border">
-        <h2 className="font-semibold text-foreground">Chat History</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-semibold text-foreground truncate flex-1">
+            {folderName || 'Chat History'}
+          </h2>
+          <AddFolderDropdown />
+        </div>
       </div>
 
       {/* New Chat Button */}

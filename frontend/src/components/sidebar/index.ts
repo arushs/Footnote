@@ -1,3 +1,4 @@
 export { ChatHistory } from './ChatHistory'
 export { ConversationList } from './ConversationList'
 export type { ConversationListProps } from './ConversationList'
+export { AddFolderDropdown } from './AddFolderDropdown'
