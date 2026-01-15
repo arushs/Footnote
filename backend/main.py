@@ -6,12 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import init_db
 from app.routes import auth, folders, chat
+from app.services.anthropic import close_client as close_anthropic_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup
     await init_db()
     yield
+    # Shutdown - cleanup SDK clients
+    await close_anthropic_client()
 
 
 app = FastAPI(
