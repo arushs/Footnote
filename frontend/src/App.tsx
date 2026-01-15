@@ -1,15 +1,30 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 
 function App() {
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
+      <Route path="/chat" element={<ChatPage />} />
       <Route path="/chat/:folderId" element={<ChatPage />} />
     </Routes>
   )
 }
 
 function LandingPage() {
+  const [searchParams] = useSearchParams()
+  const [authenticated, setAuthenticated] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('auth') === 'success') {
+      setAuthenticated(true)
+    }
+  }, [searchParams])
+
+  if (authenticated) {
+    return <Navigate to="/chat" replace />
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-6 max-w-md px-4">
