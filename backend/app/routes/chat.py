@@ -5,7 +5,6 @@ import re
 import uuid
 from typing import AsyncGenerator
 
-import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Cookie
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -13,8 +12,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import get_db
+from app.services.anthropic import get_client
 from app.models.db_models import (
     Folder,
     File,
@@ -236,8 +235,8 @@ async def generate_streaming_response(
     db.add(user_msg)
     await db.flush()
 
-    # Stream response from Claude
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    # Stream response from Claude using the shared client
+    client = get_client()
     full_response = ""
 
     try:
