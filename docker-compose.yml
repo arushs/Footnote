@@ -59,6 +59,24 @@ services:
       - /app/node_modules
     command: npm run dev -- --host 0.0.0.0
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: footnote-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uv run python -m app.worker
+
   nginx:
     image: nginx:alpine
     container_name: footnote-nginx
