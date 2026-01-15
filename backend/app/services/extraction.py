@@ -4,8 +4,8 @@ import base64
 import logging
 from dataclasses import dataclass, field
 
-import httpx
 from bs4 import BeautifulSoup, Tag
+from mistralai import Mistral
 
 from app.config import settings
 
@@ -207,9 +207,7 @@ class GoogleDocsExtractor:
 
 
 class PDFExtractor:
-    """Extract text from PDFs using Mistral OCR3."""
-
-    MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
+    """Extract text from PDFs using Mistral OCR via SDK."""
 
     def __init__(self):
         self.api_key = settings.mistral_api_key
@@ -237,29 +235,18 @@ class PDFExtractor:
             return self._fallback_extraction(pdf_content)
 
     async def _call_mistral_ocr(self, pdf_base64: str) -> dict:
-        """Call Mistral API with PDF for OCR."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        payload = {
-            "model": "mistral-ocr-latest",
-            "document": {
-                "type": "document_url",
-                "document_url": f"data:application/pdf;base64,{pdf_base64}",
-            },
-            "include_image_base64": False,
-        }
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                "https://api.mistral.ai/v1/ocr",
-                headers=headers,
-                json=payload,
+        """Call Mistral OCR API using the official SDK."""
+        async with Mistral(api_key=self.api_key) as client:
+            ocr_response = await client.ocr.process_async(
+                model="mistral-ocr-latest",
+                document={
+                    "type": "document_url",
+                    "document_url": f"data:application/pdf;base64,{pdf_base64}",
+                },
+                include_image_base64=False,
             )
-            response.raise_for_status()
-            return response.json()
+            # Convert SDK response to dict format for compatibility
+            return {"pages": [{"markdown": page.markdown} for page in ocr_response.pages]}
 
     def _parse_ocr_result(self, result: dict) -> ExtractedDocument:
         """Parse Mistral OCR response into structured document."""
