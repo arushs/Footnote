@@ -92,7 +92,9 @@ CREATE INDEX idx_chunks_embedding ON chunks
 CREATE TABLE conversations (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     folder_id UUID REFERENCES folders(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    title TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX idx_conversations_folder_id ON conversations(folder_id);
