@@ -83,7 +83,7 @@ class TestChatEndpoint:
         """Test that chat creates a new conversation and returns streaming response."""
         with patch("app.routes.chat.embed_text", mock_embedding_service["embed_text"]), \
              patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
-             patch("anthropic.AsyncAnthropic", return_value=mock_anthropic):
+             patch("app.routes.chat.get_client", return_value=mock_anthropic):
 
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
@@ -118,7 +118,7 @@ class TestChatEndpoint:
         """Test that chat can continue an existing conversation."""
         with patch("app.routes.chat.embed_text", mock_embedding_service["embed_text"]), \
              patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
-             patch("anthropic.AsyncAnthropic", return_value=mock_anthropic):
+             patch("app.routes.chat.get_client", return_value=mock_anthropic):
 
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
