@@ -65,17 +65,19 @@ export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
   }
 
   return (
-    <div
+    <article
       className={cn(
         'group flex gap-3 px-4 py-4',
         isUser ? 'bg-muted/50' : 'bg-background'
       )}
+      aria-label={isUser ? 'Your message' : 'Assistant response'}
     >
       <div
         className={cn(
           'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
           isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary'
         )}
+        aria-hidden="true"
       >
         {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
       </div>
@@ -89,17 +91,18 @@ export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
       {!isUser && (
         <button
           onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted"
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label={copied ? 'Copied to clipboard' : 'Copy message'}
           title="Copy message"
         >
           {copied ? (
-            <Check className="h-4 w-4 text-green-500" />
+            <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
           ) : (
-            <Copy className="h-4 w-4 text-muted-foreground" />
+            <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
           )}
         </button>
       )}
-    </div>
+    </article>
   )
 }
 
@@ -116,7 +119,8 @@ function CitationMarker({ number, citation, onClick }: CitationMarkerProps) {
         <Tooltip.Trigger asChild>
           <button
             onClick={onClick}
-            className="inline-flex items-center justify-center h-5 min-w-5 px-1 text-xs font-medium bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors mx-0.5"
+            className="inline-flex items-center justify-center h-5 min-w-5 px-1 text-xs font-medium bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label={`Citation ${number}: ${citation.file_name}`}
           >
             {number}
           </button>

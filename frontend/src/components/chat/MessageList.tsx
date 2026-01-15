@@ -47,7 +47,7 @@ export function MessageList({
   return (
     <ScrollArea.Root className="flex-1 overflow-hidden">
       <ScrollArea.Viewport className="h-full w-full">
-        <div className="divide-y divide-border">
+        <div className="divide-y divide-border" role="log" aria-live="polite" aria-label="Chat messages">
           {messages.map((message) => (
             <ChatMessage
               key={message.id}
@@ -59,9 +59,9 @@ export function MessageList({
             <StreamingMessage content={streamingContent} />
           )}
           {isLoading && !streamingContent && (
-            <div className="flex gap-3 px-4 py-4 bg-background">
+            <div className="flex gap-3 px-4 py-4 bg-background" role="status" aria-label="Generating response">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary">
-                <div className="flex gap-1">
+                <div className="flex gap-1" aria-hidden="true">
                   <span className="w-1.5 h-1.5 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                   <span className="w-1.5 h-1.5 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                   <span className="w-1.5 h-1.5 bg-foreground rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
