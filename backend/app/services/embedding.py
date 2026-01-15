@@ -53,18 +53,38 @@ async def embed_query(text: str) -> list[float]:
     return response.data[0].embedding
 
 
+MAX_EMBEDDING_BATCH = 50  # Optimal batch size for Fireworks API
+
+
 async def embed_documents_batch(texts: list[str]) -> list[list[float]]:
-    """Generate embeddings for a batch of documents."""
+    """Generate embeddings for a batch of documents.
+
+    Splits large batches into chunks of 50 to prevent API timeouts,
+    then processes all batches in parallel.
+    """
     if not texts:
         return []
 
     client = _get_client()
-    prefixed = [f"search_document: {t}" for t in texts]
-    response = await client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=prefixed,
-    )
-    return [item.embedding for item in response.data]
+
+    # Split into optimal-sized batches
+    batches = [
+        texts[i : i + MAX_EMBEDDING_BATCH]
+        for i in range(0, len(texts), MAX_EMBEDDING_BATCH)
+    ]
+
+    async def process_batch(batch: list[str]) -> list[list[float]]:
+        prefixed = [f"search_document: {t}" for t in batch]
+        response = await client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=prefixed,
+        )
+        return [item.embedding for item in response.data]
+
+    # Process all batches in parallel
+    results = await asyncio.gather(*[process_batch(b) for b in batches])
+
+    return [emb for batch_result in results for emb in batch_result]
 
 
 async def rerank(query: str, documents: list[str], top_k: int = 15) -> list[tuple[int, float]]:

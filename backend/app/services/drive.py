@@ -5,6 +5,18 @@ from dataclasses import dataclass
 import httpx
 
 
+# Module-level HTTP client for connection reuse
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """Get shared HTTP client for connection reuse."""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient(timeout=30.0)
+    return _http_client
+
+
 @dataclass
 class FileMetadata:
     id: str
@@ -35,14 +47,14 @@ class DriveService:
         if page_token:
             params["pageToken"] = page_token
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.DRIVE_API_BASE}/files",
-                headers=self.headers,
-                params=params,
-            )
-            response.raise_for_status()
-            data = response.json()
+        client = _get_http_client()
+        response = await client.get(
+            f"{self.DRIVE_API_BASE}/files",
+            headers=self.headers,
+            params=params,
+        )
+        response.raise_for_status()
+        data = response.json()
 
         files = [
             FileMetadata(
@@ -59,14 +71,14 @@ class DriveService:
 
     async def get_file_metadata(self, file_id: str) -> FileMetadata:
         """Get metadata for a single file."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.DRIVE_API_BASE}/files/{file_id}",
-                headers=self.headers,
-                params={"fields": "id, name, mimeType, modifiedTime, size"},
-            )
-            response.raise_for_status()
-            f = response.json()
+        client = _get_http_client()
+        response = await client.get(
+            f"{self.DRIVE_API_BASE}/files/{file_id}",
+            headers=self.headers,
+            params={"fields": "id, name, mimeType, modifiedTime, size"},
+        )
+        response.raise_for_status()
+        f = response.json()
 
         return FileMetadata(
             id=f["id"],
@@ -78,24 +90,22 @@ class DriveService:
 
     async def export_google_doc(self, file_id: str, mime_type: str = "text/html") -> str:
         """Export a Google Doc to specified format."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.DRIVE_API_BASE}/files/{file_id}/export",
-                headers=self.headers,
-                params={"mimeType": mime_type},
-            )
-            response.raise_for_status()
-
+        client = _get_http_client()
+        response = await client.get(
+            f"{self.DRIVE_API_BASE}/files/{file_id}/export",
+            headers=self.headers,
+            params={"mimeType": mime_type},
+        )
+        response.raise_for_status()
         return response.text
 
     async def download_file(self, file_id: str) -> bytes:
         """Download a file's content."""
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{self.DRIVE_API_BASE}/files/{file_id}",
-                headers=self.headers,
-                params={"alt": "media"},
-            )
-            response.raise_for_status()
-
+        client = _get_http_client()
+        response = await client.get(
+            f"{self.DRIVE_API_BASE}/files/{file_id}",
+            headers=self.headers,
+            params={"alt": "media"},
+        )
+        response.raise_for_status()
         return response.content

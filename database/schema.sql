@@ -59,6 +59,8 @@ CREATE TABLE files (
 
 CREATE INDEX idx_files_folder_id ON files(folder_id);
 CREATE INDEX idx_files_status ON files(index_status);
+-- Composite index for fast folder progress queries and job claiming
+CREATE INDEX idx_files_folder_status ON files(folder_id, index_status);
 
 -- Vector index for file-level retrieval (Stage 1)
 CREATE INDEX idx_files_embedding ON files
