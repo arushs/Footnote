@@ -1,10 +1,10 @@
-# Render Blueprint for Talk-to-Folder Application
+# Render Blueprint for Footnote Application
 # https://render.com/docs/blueprint-spec
 
 services:
   # Frontend - Static React Application
   - type: web
-    name: talk-to-folder-web
+    name: footnote-web
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
@@ -19,27 +19,31 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://talk-to-folder-api.onrender.com
+        value: https://footnote-api.onrender.com
+      - key: VITE_GOOGLE_API_KEY
+        sync: false
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
 
-  # Backend - FastAPI Web Service
+  # Backend - FastAPI Web Service with Docker
   - type: web
-    name: talk-to-folder-api
-    runtime: python
+    name: footnote-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     plan: starter
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: talk-to-folder-db
+          name: footnote-db
           property: connectionString
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://talk-to-folder-api.onrender.com/api/auth/google/callback
+        value: https://footnote-api.onrender.com/api/auth/google/callback
       - key: TOGETHER_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
@@ -49,29 +53,32 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FRONTEND_URL
-        value: https://talk-to-folder-web.onrender.com
+        value: https://footnote-web.onrender.com
       - key: CORS_ORIGINS
-        value: '["https://talk-to-folder-web.onrender.com"]'
+        value: '["https://footnote-web.onrender.com"]'
 
-  # Background Worker - Indexing Jobs
+  # Background Worker - Indexing Jobs with Docker
   - type: worker
-    name: talk-to-folder-worker
-    runtime: python
+    name: footnote-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: uv run python -m app.worker
     plan: starter
-    buildCommand: cd backend && pip install -r requirements.txt
-    startCommand: cd backend && python -m app.worker
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: talk-to-folder-db
+          name: footnote-db
           property: connectionString
       - key: TOGETHER_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
         sync: false
       - key: MISTRAL_API_KEY
         sync: false
 
 databases:
-  - name: talk-to-folder-db
+  - name: footnote-db
     plan: starter
-    postgresMajorVersion: 15
+    postgresMajorVersion: 16
     ipAllowList: []
