@@ -43,7 +43,7 @@ describe('ChatMessage', () => {
       render(<ChatMessage message={userMessage} />)
 
       // User messages have different styling (bg-muted/50)
-      const container = screen.getByText('What does the document say about testing?').closest('div.group')
+      const container = screen.getByText('What does the document say about testing?').closest('article.group')
       expect(container).toHaveClass('bg-muted/50')
     })
 
@@ -68,7 +68,7 @@ describe('ChatMessage', () => {
 
       // Assistant messages have bg-background
       const content = screen.getByText(/According to the document/)
-      const container = content.closest('div.group')
+      const container = content.closest('article.group')
       expect(container).toHaveClass('bg-background')
     })
 
@@ -102,8 +102,9 @@ describe('ChatMessage', () => {
     it('should render citation marker with correct number', () => {
       render(<ChatMessage message={assistantMessage} />)
 
-      const citationButton = screen.getByRole('button', { name: '1' })
+      const citationButton = screen.getByRole('button', { name: /Citation 1:/ })
       expect(citationButton).toBeInTheDocument()
+      expect(citationButton).toHaveTextContent('1')
     })
 
     it('should render multiple citations', () => {
@@ -120,8 +121,8 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={messageWithMultipleCitations} />)
 
-      expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '2' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Citation 1:/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Citation 2:/ })).toBeInTheDocument()
     })
 
     it('should call onCitationClick when citation is clicked', async () => {
@@ -130,7 +131,7 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={assistantMessage} onCitationClick={onCitationClick} />)
 
-      const citationButton = screen.getByRole('button', { name: '1' })
+      const citationButton = screen.getByRole('button', { name: /Citation 1:/ })
       await user.click(citationButton)
 
       expect(onCitationClick).toHaveBeenCalledWith(mockCitation)
@@ -147,8 +148,8 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={messageWithMissingCitation} />)
 
-      // Citation [1] should be a button
-      expect(screen.getByRole('button', { name: '1' })).toBeInTheDocument()
+      // Citation [1] should be a button with accessible label
+      expect(screen.getByRole('button', { name: /Citation 1:/ })).toBeInTheDocument()
 
       // Citation [2] should be rendered as plain text since no citation data
       expect(screen.getByText(/\[2\]/)).toBeInTheDocument()
