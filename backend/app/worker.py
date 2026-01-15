@@ -220,21 +220,32 @@ async def process_job(job: IndexingJob) -> None:
             {"file_id": str(job.file_id)},
         )
 
-        # Insert chunks
-        for chunk, embedding in zip(chunks, chunk_embeddings):
-            await db.execute(
-                text("""
-                    INSERT INTO chunks (id, file_id, chunk_text, chunk_embedding, location, chunk_index)
-                    VALUES (:id, :file_id, :chunk_text, CAST(:chunk_embedding AS vector), CAST(:location AS jsonb), :chunk_index)
-                """),
+        # Insert chunks in a single batch operation (10-100x faster than sequential)
+        if chunks:
+            chunk_values = [
                 {
                     "id": str(uuid.uuid4()),
                     "file_id": str(job.file_id),
                     "chunk_text": chunk.text,
                     "chunk_embedding": format_vector(embedding),
                     "location": json.dumps(chunk.location),
-                    "chunk_index": chunk.chunk_index,
-                },
+                    "chunk_index": idx,
+                }
+                for idx, (chunk, embedding) in enumerate(zip(chunks, chunk_embeddings))
+            ]
+            await db.execute(
+                text("""
+                    INSERT INTO chunks (id, file_id, chunk_text, chunk_embedding, location, chunk_index)
+                    SELECT
+                        (value->>'id')::uuid,
+                        (value->>'file_id')::uuid,
+                        value->>'chunk_text',
+                        CAST(value->>'chunk_embedding' AS vector),
+                        (value->>'location')::jsonb,
+                        (value->>'chunk_index')::int
+                    FROM jsonb_array_elements(CAST(:values AS jsonb)) AS value
+                """),
+                {"values": json.dumps(chunk_values)},
             )
 
         await db.commit()
@@ -403,5 +414,6 @@ async def worker_loop(concurrency: int = 5) -> None:
 if __name__ == "__main__":
     import os
     logging.basicConfig(level=logging.INFO)
-    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "5"))
+    # Increased from 5 to 20 for I/O-bound work
+    concurrency = int(os.environ.get("WORKER_CONCURRENCY", "20"))
     asyncio.run(worker_loop(concurrency))
