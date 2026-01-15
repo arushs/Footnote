@@ -64,7 +64,7 @@ function HeaderBrand({ title = 'Talk to a Folder', backTo, backLabel }: HeaderBr
           {backLabel || 'Back'}
         </button>
       )}
-      <Link to="/folders" className="flex items-center gap-2">
+      <Link to="/chat" className="flex items-center gap-2">
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
           <FolderOpen className="h-4 w-4 text-primary-foreground" />
         </div>

@@ -14,7 +14,7 @@ export function LandingPage() {
   }
 
   if (user) {
-    return <Navigate to="/folders" replace />
+    return <Navigate to="/chat" replace />
   }
 
   return (

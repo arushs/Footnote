@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
-import { LandingPage, FoldersPage, ChatPage } from './pages'
+import { LandingPage, ChatPage } from './pages'
 import { ToastContainer } from './components/ui/toast'
 
 function App() {
@@ -9,14 +9,7 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route
-          path="/folders"
-          element={
-            <ProtectedRoute>
-              <FoldersPage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/folders" element={<Navigate to="/chat" replace />} />
         <Route
           path="/chat"
           element={

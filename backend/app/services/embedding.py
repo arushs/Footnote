@@ -97,6 +97,10 @@ async def rerank(query: str, documents: list[str], top_k: int = 15) -> list[tupl
             )
             response.raise_for_status()
             data = response.json()
-            return [(item["index"], item["relevance_score"]) for item in data["results"]]
+            # Fireworks API returns "data" array (OpenAI-style), not "results"
+            results = data.get("data") or data.get("results")
+            if not results:
+                raise RuntimeError(f"Unexpected rerank response format: {list(data.keys())}")
+            return [(item["index"], item["relevance_score"]) for item in results]
     except httpx.HTTPStatusError as e:
         raise RuntimeError(f"Rerank API error {e.response.status_code}: {e.response.text}")
