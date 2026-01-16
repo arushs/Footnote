@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Copy, Check, User, Bot } from 'lucide-react'
+import { Copy, Check, User, Bot, ChevronRight } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import type { Message, Citation } from '../../types'
 import { cn } from '../../lib/utils'
@@ -7,11 +7,21 @@ import { cn } from '../../lib/utils'
 export interface ChatMessageProps {
   message: Message
   onCitationClick?: (citation: Citation) => void
+  isSourcesOpen?: boolean
+  onToggleSources?: () => void
 }
 
-export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  onCitationClick,
+  isSourcesOpen,
+  onToggleSources,
+}: ChatMessageProps) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
+  const hasCitations =
+    message.citations && Object.keys(message.citations).length > 0
+  const citationCount = hasCitations ? Object.keys(message.citations!).length : 0
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content)
@@ -44,7 +54,6 @@ export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
         parts.push(
           <CitationMarker
             key={`${match.index}-${citationKey}`}
-            number={citationKey}
             citation={citation}
             onClick={() => onCitationClick?.(citation)}
           />
@@ -86,6 +95,13 @@ export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
         <div className="prose prose-sm max-w-none dark:prose-invert">
           {renderContent()}
         </div>
+        {!isUser && hasCitations && onToggleSources && (
+          <SourcesPill
+            count={citationCount}
+            isOpen={isSourcesOpen ?? false}
+            onClick={onToggleSources}
+          />
+        )}
       </div>
 
       {!isUser && (
@@ -107,22 +123,26 @@ export function ChatMessage({ message, onCitationClick }: ChatMessageProps) {
 }
 
 interface CitationMarkerProps {
-  number: string
   citation: Citation
   onClick: () => void
 }
 
-function CitationMarker({ number, citation, onClick }: CitationMarkerProps) {
+function CitationMarker({ citation, onClick }: CitationMarkerProps) {
+  const displayName =
+    citation.file_name.length > 20
+      ? citation.file_name.slice(0, 17) + '...'
+      : citation.file_name
+
   return (
     <Tooltip.Provider delayDuration={200}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           <button
             onClick={onClick}
-            className="inline-flex items-center justify-center h-5 min-w-5 px-1 text-xs font-medium bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
-            aria-label={`Citation ${number}: ${citation.file_name}`}
+            className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label={`Source: ${citation.file_name}`}
           >
-            {number}
+            {displayName}
           </button>
         </Tooltip.Trigger>
         <Tooltip.Portal>
@@ -140,5 +160,27 @@ function CitationMarker({ number, citation, onClick }: CitationMarkerProps) {
         </Tooltip.Portal>
       </Tooltip.Root>
     </Tooltip.Provider>
+  )
+}
+
+interface SourcesPillProps {
+  count: number
+  isOpen: boolean
+  onClick: () => void
+}
+
+function SourcesPill({ count, isOpen, onClick }: SourcesPillProps) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium bg-muted hover:bg-muted/80 rounded-full transition-colors"
+      aria-expanded={isOpen}
+      aria-label={`${isOpen ? 'Hide' : 'Show'} ${count} sources`}
+    >
+      <span>Sources ({count})</span>
+      <ChevronRight
+        className={cn('w-4 h-4 transition-transform', isOpen && 'rotate-180')}
+      />
+    </button>
   )
 }

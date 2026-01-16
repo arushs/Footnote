@@ -180,6 +180,7 @@ export function ChatPage() {
   const [searchedFiles, setSearchedFiles] = useState<string[]>([])
   const [citedSources, setCitedSources] = useState<Citation[]>([])
   const [showIndexingComplete, setShowIndexingComplete] = useState(false)
+  const [isSourcesOpen, setIsSourcesOpen] = useState(false)
 
   // Handle indexing complete transition
   const handleIndexingComplete = useCallback(() => {
@@ -250,6 +251,11 @@ export function ChatPage() {
     [loadConversation]
   )
 
+  // Toggle sources panel visibility
+  const handleToggleSources = useCallback(() => {
+    setIsSourcesOpen((prev) => !prev)
+  }, [])
+
   // Show empty state when no folder is selected
   if (!folderId) {
     return (
@@ -303,6 +309,8 @@ export function ChatPage() {
             streamingContent={streamingContent}
             isLoading={chatLoading}
             onCitationClick={handleCitationClick}
+            isSourcesOpen={isSourcesOpen}
+            onToggleSources={handleToggleSources}
           />
           <MessageInput
             onSend={sendMessage}
@@ -317,12 +325,19 @@ export function ChatPage() {
           />
         </main>
 
-        {/* Right sidebar - Sources */}
-        <SourcesPanel
-          searchedFiles={searchedFiles}
-          citedSources={citedSources}
-          onSourceClick={handleCitationClick}
-        />
+        {/* Right sidebar - Sources (collapsible) */}
+        <aside
+          className={cn(
+            'border-l border-border flex-shrink-0 transition-all duration-200 overflow-hidden',
+            isSourcesOpen ? 'w-72' : 'w-0 border-0'
+          )}
+        >
+          <SourcesPanel
+            searchedFiles={searchedFiles}
+            citedSources={citedSources}
+            onSourceClick={handleCitationClick}
+          />
+        </aside>
       </div>
     </AppShell>
   )

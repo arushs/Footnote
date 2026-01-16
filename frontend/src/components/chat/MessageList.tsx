@@ -9,6 +9,8 @@ interface MessageListProps {
   streamingContent?: string
   isLoading?: boolean
   onCitationClick?: (citation: Citation) => void
+  isSourcesOpen?: boolean
+  onToggleSources?: () => void
 }
 
 export function MessageList({
@@ -16,6 +18,8 @@ export function MessageList({
   streamingContent,
   isLoading,
   onCitationClick,
+  isSourcesOpen,
+  onToggleSources,
 }: MessageListProps) {
 
   if (messages.length === 0 && !streamingContent) {
@@ -46,6 +50,8 @@ export function MessageList({
               key={message.id}
               message={message}
               onCitationClick={onCitationClick}
+              isSourcesOpen={isSourcesOpen}
+              onToggleSources={onToggleSources}
             />
           ))}
           {isLoading && streamingContent && (
