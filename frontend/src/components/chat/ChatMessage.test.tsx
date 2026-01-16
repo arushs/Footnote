@@ -99,15 +99,15 @@ describe('ChatMessage', () => {
   })
 
   describe('Citation Rendering', () => {
-    it('should render citation marker with correct number', () => {
+    it('should render citation marker with file name', () => {
       render(<ChatMessage message={assistantMessage} />)
 
-      const citationButton = screen.getByRole('button', { name: /Citation 1:/ })
+      const citationButton = screen.getByRole('button', { name: /Source: research-paper.pdf/ })
       expect(citationButton).toBeInTheDocument()
-      expect(citationButton).toHaveTextContent('1')
+      expect(citationButton).toHaveTextContent('research-paper.pdf')
     })
 
-    it('should render multiple citations', () => {
+    it('should render multiple citations with file names', () => {
       const messageWithMultipleCitations: Message = {
         id: 'msg-3',
         role: 'assistant',
@@ -121,8 +121,8 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={messageWithMultipleCitations} />)
 
-      expect(screen.getByRole('button', { name: /Citation 1:/ })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Citation 2:/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Source: research-paper.pdf/ })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Source: another-doc.pdf/ })).toBeInTheDocument()
     })
 
     it('should call onCitationClick when citation is clicked', async () => {
@@ -131,7 +131,7 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={assistantMessage} onCitationClick={onCitationClick} />)
 
-      const citationButton = screen.getByRole('button', { name: /Citation 1:/ })
+      const citationButton = screen.getByRole('button', { name: /Source: research-paper.pdf/ })
       await user.click(citationButton)
 
       expect(onCitationClick).toHaveBeenCalledWith(mockCitation)
@@ -148,11 +148,32 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={messageWithMissingCitation} />)
 
-      // Citation [1] should be a button with accessible label
-      expect(screen.getByRole('button', { name: /Citation 1:/ })).toBeInTheDocument()
+      // Citation [1] should be a button with accessible label showing file name
+      expect(screen.getByRole('button', { name: /Source: research-paper.pdf/ })).toBeInTheDocument()
 
       // Citation [2] should be rendered as plain text since no citation data
       expect(screen.getByText(/\[2\]/)).toBeInTheDocument()
+    })
+
+    it('should truncate long file names over 20 chars', () => {
+      const messageWithLongFileName: Message = {
+        id: 'msg-5',
+        role: 'assistant',
+        content: 'See reference [1] for details.',
+        citations: {
+          '1': { ...mockCitation, file_name: 'this-is-a-very-long-file-name.pdf' },
+        },
+        created_at: new Date().toISOString(),
+      }
+
+      render(<ChatMessage message={messageWithLongFileName} />)
+
+      // Button should show truncated name but aria-label should have full name
+      const citationButton = screen.getByRole('button', {
+        name: /Source: this-is-a-very-long-file-name.pdf/,
+      })
+      expect(citationButton).toBeInTheDocument()
+      expect(citationButton).toHaveTextContent('this-is-a-very-lo...')
     })
   })
 

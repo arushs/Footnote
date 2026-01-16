@@ -13,7 +13,7 @@ export function SourcesPanel({ searchedFiles, citedSources, onSourceClick }: Sou
   const hasSources = searchedFiles.length > 0 || citedSources.length > 0
 
   return (
-    <aside className="w-72 border-l border-border flex flex-col bg-background" aria-label="Sources panel">
+    <div className="w-72 flex flex-col bg-background h-full" aria-label="Sources panel">
       <div className="p-4 border-b border-border">
         <h2 className="font-semibold text-foreground">Sources</h2>
       </div>
@@ -77,7 +77,7 @@ export function SourcesPanel({ searchedFiles, citedSources, onSourceClick }: Sou
           <ScrollArea.Thumb className="relative flex-1 rounded-full bg-border" />
         </ScrollArea.Scrollbar>
       </ScrollArea.Root>
-    </aside>
+    </div>
   )
 }
 
