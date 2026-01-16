@@ -4,6 +4,7 @@ export { MessageInput } from './MessageInput'
 export type { MessageInputProps } from './MessageInput'
 export { MessageList } from './MessageList'
 export { StreamingMessage } from './StreamingMessage'
+export { AgentModeToggle } from './AgentModeToggle'
 
 // Aliases for better naming
 export { MessageBubble } from './MessageBubble'

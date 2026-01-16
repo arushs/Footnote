@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FolderOpen, ChevronDown, Loader2, Plus } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { MessageList, MessageInput } from '../components/chat'
+import { MessageList, MessageInput, AgentModeToggle } from '../components/chat'
 import { ChatHistory } from '../components/sidebar'
 import { SourcesPanel } from '../components/sources'
 import { IndexingProgress, IndexingComplete } from '../components/overlay'
@@ -181,6 +181,7 @@ export function ChatPage() {
   const [citedSources, setCitedSources] = useState<Citation[]>([])
   const [showIndexingComplete, setShowIndexingComplete] = useState(false)
   const [isSourcesOpen, setIsSourcesOpen] = useState(false)
+  const [agentMode, setAgentMode] = useState(false)
 
   // Handle indexing complete transition
   const handleIndexingComplete = useCallback(() => {
@@ -226,6 +227,7 @@ export function ChatPage() {
     folderId: folderId || '',
     onSourcesUpdate: handleSourcesUpdate,
     enabled: !!folderId,
+    agentMode,
   })
 
   // Handle citation click - open in Google Drive
@@ -312,6 +314,13 @@ export function ChatPage() {
             isSourcesOpen={isSourcesOpen}
             onToggleSources={handleToggleSources}
           />
+          <div className="border-t border-border px-4 py-2 bg-background flex items-center justify-between">
+            <AgentModeToggle
+              enabled={agentMode}
+              onChange={setAgentMode}
+              disabled={isIndexing || chatLoading}
+            />
+          </div>
           <MessageInput
             onSend={sendMessage}
             onStop={stopGeneration}
@@ -320,7 +329,9 @@ export function ChatPage() {
             placeholder={
               isIndexing
                 ? 'Please wait for indexing to complete...'
-                : 'Ask about your files...'
+                : agentMode
+                  ? 'Ask a complex question (agent will search iteratively)...'
+                  : 'Ask about your files...'
             }
           />
         </main>

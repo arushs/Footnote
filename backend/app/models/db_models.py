@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Text, Integer, DateTime, JSON
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -44,6 +44,7 @@ class Folder(Base):
     index_status: Mapped[str] = mapped_column(Text, default="pending")
     files_total: Mapped[int] = mapped_column(Integer, default=0)
     files_indexed: Mapped[int] = mapped_column(Integer, default=0)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -63,6 +64,7 @@ class File(Base):
     modified_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     file_preview: Mapped[str | None] = mapped_column(Text, nullable=True)
     file_embedding = mapped_column(Vector(768), nullable=True)
+    search_vector = mapped_column(TSVECTOR, nullable=True)
     index_status: Mapped[str] = mapped_column(Text, default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -77,6 +79,7 @@ class Chunk(Base):
     file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_embedding = mapped_column(Vector(768), nullable=True)
+    search_vector = mapped_column(TSVECTOR, nullable=True)
     location: Mapped[dict] = mapped_column(JSON, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

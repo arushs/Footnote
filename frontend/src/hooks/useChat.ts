@@ -6,9 +6,10 @@ interface UseChatOptions {
   folderId: string
   onSourcesUpdate?: (searchedFiles: string[], citations: Record<string, Citation>) => void
   enabled?: boolean
+  agentMode?: boolean
 }
 
-export function useChat({ folderId, onSourcesUpdate, enabled = true }: UseChatOptions) {
+export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode = false }: UseChatOptions) {
   const [state, setState] = useState<ChatState>({
     messages: [],
     isLoading: false,
@@ -56,6 +57,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true }: UseChatOp
         credentials: 'include',
         body: JSON.stringify({
           message: content,
+          agent_mode: agentMode,
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -150,7 +152,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true }: UseChatOp
         streamingContent: '',
       }))
     }
-  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate, enabled])
+  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate, enabled, agentMode])
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {

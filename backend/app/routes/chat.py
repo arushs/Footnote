@@ -24,6 +24,9 @@ from app.models.db_models import (
 )
 from app.routes.auth import get_current_session
 from app.services.embedding import embed_query, rerank
+from app.services.chat_rag import standard_rag
+from app.services.agent_rag import agentic_rag
+from app.services.folder_sync import sync_folder_if_needed
 
 router = APIRouter()
 
@@ -36,6 +39,7 @@ CONTEXT_TOP_K = 8
 class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
+    agent_mode: bool = False  # Enable agent mode for iterative search
 
 
 class CitationData(BaseModel):
@@ -335,6 +339,14 @@ async def chat(
             detail="Folder is still being indexed. Please wait.",
         )
 
+    # Sync folder with Drive if needed (checks last_synced_at to avoid frequent syncs)
+    await sync_folder_if_needed(
+        db=db,
+        folder=folder,
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+    )
+
     # Get or create conversation
     if request.conversation_id:
         try:
@@ -356,29 +368,26 @@ async def chat(
         db.add(conversation)
         await db.flush()
 
-    # Generate query embedding
-    query_embedding = await embed_query(request.message)
+    # Route to appropriate mode based on agent_mode flag
+    if request.agent_mode:
+        # Agent mode: iterative search with tools (slower, more thorough)
+        rag_generator = agentic_rag(
+            db=db,
+            folder_id=folder_uuid,
+            conversation=conversation,
+            user_message=request.message,
+        )
+    else:
+        # Standard mode: single-shot hybrid RAG (default, fast)
+        rag_generator = standard_rag(
+            db=db,
+            folder_id=folder_uuid,
+            conversation=conversation,
+            user_message=request.message,
+        )
 
-    # Retrieve relevant chunks
-    chunks_with_files = await retrieve_chunks(db, folder_uuid, query_embedding)
-
-    # Get list of searched files (unique file names)
-    searched_files = list({file.file_name for _, file, _ in chunks_with_files})
-
-    # Rerank chunks
-    if chunks_with_files:
-        chunks_with_files = await rerank_chunks(request.message, chunks_with_files)
-
-    # Generate streaming response
     return StreamingResponse(
-        generate_streaming_response(
-            db,
-            folder_uuid,
-            conversation,
-            request.message,
-            chunks_with_files,
-            searched_files,
-        ),
+        rag_generator,
         media_type="text/event-stream",
     )
 
@@ -718,28 +727,33 @@ async def chat_in_conversation(
             detail="Folder is still being indexed. Please wait.",
         )
 
-    # Generate query embedding
-    query_embedding = await embed_query(request.message)
+    # Sync folder with Drive if needed (checks last_synced_at to avoid frequent syncs)
+    await sync_folder_if_needed(
+        db=db,
+        folder=folder,
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+    )
 
-    # Retrieve relevant chunks from the folder
-    chunks_with_files = await retrieve_chunks(db, folder.id, query_embedding)
+    # Route to appropriate mode based on agent_mode flag
+    if request.agent_mode:
+        # Agent mode: iterative search with tools (slower, more thorough)
+        rag_generator = agentic_rag(
+            db=db,
+            folder_id=folder.id,
+            conversation=conversation,
+            user_message=request.message,
+        )
+    else:
+        # Standard mode: single-shot hybrid RAG (default, fast)
+        rag_generator = standard_rag(
+            db=db,
+            folder_id=folder.id,
+            conversation=conversation,
+            user_message=request.message,
+        )
 
-    # Get list of searched files (unique file names)
-    searched_files = list({file.file_name for _, file, _ in chunks_with_files})
-
-    # Rerank chunks
-    if chunks_with_files:
-        chunks_with_files = await rerank_chunks(request.message, chunks_with_files)
-
-    # Generate streaming response
     return StreamingResponse(
-        generate_streaming_response(
-            db,
-            folder.id,
-            conversation,
-            request.message,
-            chunks_with_files,
-            searched_files,
-        ),
+        rag_generator,
         media_type="text/event-stream",
     )

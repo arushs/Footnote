@@ -34,6 +34,7 @@ CREATE TABLE folders (
     index_status TEXT DEFAULT 'pending',  -- pending, indexing, ready, failed
     files_total INT DEFAULT 0,
     files_indexed INT DEFAULT 0,
+    last_synced_at TIMESTAMPTZ,  -- For diff-based folder sync
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, google_folder_id)
@@ -52,6 +53,7 @@ CREATE TABLE files (
     modified_time TIMESTAMPTZ,
     file_preview TEXT,
     file_embedding vector(768),  -- Nomic embedding dimension
+    search_vector tsvector,  -- Full-text search vector for hybrid search
     index_status TEXT DEFAULT 'pending',  -- pending, indexing, completed, failed
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(folder_id, google_file_id)
@@ -73,6 +75,7 @@ CREATE TABLE chunks (
     file_id UUID REFERENCES files(id) ON DELETE CASCADE,
     chunk_text TEXT NOT NULL,
     chunk_embedding vector(768),
+    search_vector tsvector,  -- Full-text search vector for hybrid search
     -- Location metadata stored as JSONB for flexibility
     -- Examples:
     --   {"type": "pdf", "page": 3, "block_index": 2}
@@ -146,3 +149,35 @@ CREATE TRIGGER update_folders_updated_at
     BEFORE UPDATE ON folders
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+-- GIN indexes for full-text search (hybrid search)
+CREATE INDEX idx_files_search_vector ON files USING GIN(search_vector);
+CREATE INDEX idx_chunks_search_vector ON chunks USING GIN(search_vector);
+
+-- Trigger to auto-update file search_vector
+CREATE OR REPLACE FUNCTION update_file_search_vector()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.search_vector :=
+        setweight(to_tsvector('english', coalesce(NEW.file_name, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(NEW.file_preview, '')), 'B');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER files_search_vector_update
+    BEFORE INSERT OR UPDATE OF file_name, file_preview ON files
+    FOR EACH ROW EXECUTE FUNCTION update_file_search_vector();
+
+-- Trigger to auto-update chunk search_vector
+CREATE OR REPLACE FUNCTION update_chunk_search_vector()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.search_vector := to_tsvector('english', coalesce(NEW.chunk_text, ''));
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER chunks_search_vector_update
+    BEFORE INSERT OR UPDATE OF chunk_text ON chunks
+    FOR EACH ROW EXECUTE FUNCTION update_chunk_search_vector();
