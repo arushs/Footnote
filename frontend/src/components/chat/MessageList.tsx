@@ -1,4 +1,3 @@
-import { useRef, useEffect } from 'react'
 import { MessageCircle } from 'lucide-react'
 import * as ScrollArea from '@radix-ui/react-scroll-area'
 import { ChatMessage } from './ChatMessage'
@@ -10,6 +9,8 @@ interface MessageListProps {
   streamingContent?: string
   isLoading?: boolean
   onCitationClick?: (citation: Citation) => void
+  isSourcesOpen?: boolean
+  onToggleSources?: () => void
 }
 
 export function MessageList({
@@ -17,13 +18,9 @@ export function MessageList({
   streamingContent,
   isLoading,
   onCitationClick,
+  isSourcesOpen,
+  onToggleSources,
 }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
 
   if (messages.length === 0 && !streamingContent) {
     return (
@@ -53,6 +50,8 @@ export function MessageList({
               key={message.id}
               message={message}
               onCitationClick={onCitationClick}
+              isSourcesOpen={isSourcesOpen}
+              onToggleSources={onToggleSources}
             />
           ))}
           {isLoading && streamingContent && (
@@ -70,7 +69,6 @@ export function MessageList({
             </div>
           )}
         </div>
-        <div ref={bottomRef} />
       </ScrollArea.Viewport>
       <ScrollArea.Scrollbar
         className="flex touch-none select-none bg-muted/50 p-0.5 transition-colors hover:bg-muted data-[orientation=horizontal]:h-2.5 data-[orientation=vertical]:w-2.5 data-[orientation=horizontal]:flex-col"

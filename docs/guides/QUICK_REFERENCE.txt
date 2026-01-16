@@ -1,0 +1,256 @@
+================================================================================
+                    CREDENTIAL CONFIGURATION QUICK REFERENCE
+================================================================================
+
+THE GOLDEN RULE:
+================================================================================
+Database hostname MUST match your environment:
+  LOCAL:      localhost         (direct connection)
+  DOCKER:     db               (Docker service name)
+  PRODUCTION: your-db.rds.com  (actual database endpoint)
+
+================================================================================
+BEFORE YOU START
+================================================================================
+
+1. Copy the template:
+   cp .env.example .env
+
+2. Fill in your credentials in .env
+   - Get API keys from console.anthropic.com, console.cloud.google.com, etc.
+   - Use DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/...
+
+3. Validate:
+   ./scripts/validate-credentials.sh local
+
+4. Start services:
+   npm run dev                    # Local development
+   docker-compose up              # Or use Docker
+
+
+BEFORE YOU COMMIT
+================================================================================
+
+1. Make sure you're NOT committing credentials:
+   git status | grep ".env"       # Should not show .env, only .env.example
+
+2. Install git hook (one time):
+   cp scripts/pre-commit-hook.sh .git/hooks/pre-commit
+   chmod +x .git/hooks/pre-commit
+
+3. Commit normally:
+   git add .                      # Git hook will check before commit
+   git commit -m "your message"
+
+
+DOCKER SETUP (CRITICAL!)
+================================================================================
+
+DATABASE_URL MUST use 'db' not 'localhost':
+
+  CORRECT for Docker:
+  DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+
+  WRONG for Docker:
+  DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+                                                       ^^^^^^^ THIS IS THE PROBLEM!
+
+If you see "connection refused" in Docker, check DATABASE_URL hostname.
+
+
+FILES STRUCTURE
+================================================================================
+
+.env                           (gitignored) - Your local credentials
+.env.example                   (committed)  - Template for everyone
+.env.docker                    (committed)  - Docker config reference
+.gitignore                     (committed)  - Includes .env patterns
+
+scripts/validate-credentials.sh (committed) - Validation tool
+scripts/pre-commit-hook.sh      (committed) - Git hook (copy to .git/hooks/)
+
+
+VALIDATION COMMANDS
+================================================================================
+
+Before starting:
+  ./scripts/validate-credentials.sh local      # For npm run dev
+  ./scripts/validate-credentials.sh docker     # For docker-compose up
+
+Debug configuration:
+  ./scripts/debug-config.sh                    # Shows current settings (sanitized)
+
+Test database connection:
+  psql postgresql://postgres:postgres@localhost:5432/talk_to_folder
+  docker-compose exec backend psql -h db -U postgres -d talk_to_folder -c "SELECT 1"
+
+
+API KEYS NEEDED
+================================================================================
+
+Required credentials in .env:
+
+  GOOGLE_CLIENT_ID
+  GOOGLE_CLIENT_SECRET
+  ANTHROPIC_API_KEY
+  FIREWORKS_API_KEY
+  MISTRAL_API_KEY
+  SECRET_KEY
+
+Check which ones are missing:
+  ./scripts/validate-credentials.sh local
+
+
+COMMON ISSUES & FIXES
+================================================================================
+
+Issue: "Connection refused" in Docker
+  └─ Fix: Change DATABASE_URL from localhost to db
+  └─ Run: ./scripts/validate-credentials.sh docker
+
+Issue: "Connection refused" locally
+  └─ Fix: Make sure PostgreSQL is running
+  └─ Run: brew services start postgresql@15
+  └─ Run: ./scripts/validate-credentials.sh local
+
+Issue: "Missing credentials" error
+  └─ Fix: Copy template and add real values
+  └─ Run: cp .env.example .env
+  └─ Edit .env and fill in API keys
+
+Issue: Git hook blocking commit
+  └─ This is working correctly! You're trying to commit credentials
+  └─ Remove file: git reset HEAD .env
+  └─ Then: git commit (only commit .env.example, not .env)
+
+
+IMPORTANT DATES & PATTERNS
+================================================================================
+
+Environment Variable Names:   Starts with capital letter (GOOGLE_CLIENT_ID)
+Database Hostnames:
+  Local:      localhost (not 127.0.0.1 usually, but both work)
+  Docker:     db (must be lowercase service name from docker-compose.yml)
+  RDS:        something.rds.amazonaws.com
+
+API Key Patterns:
+  Anthropic:   sk-ant-...
+  Google:      ...apps.googleusercontent.com
+  Fireworks:   fw_...
+  Mistral:     alphanumeric
+
+
+DOCUMENTATION (READ IN THIS ORDER)
+================================================================================
+
+1. ENVIRONMENT_SETUP.md
+   └─ Complete setup guide with examples
+
+2. CREDENTIAL_CHECKLIST.md
+   └─ Quick reference checklist
+
+3. CREDENTIAL_MANAGEMENT.md
+   └─ Deep dive into prevention strategies
+
+4. CREDENTIAL_PREVENTION_SUMMARY.md
+   └─ Overview of entire system
+
+
+FOR NEW DEVELOPERS
+================================================================================
+
+1. Clone repo: git clone <your-repo>
+2. Read: ENVIRONMENT_SETUP.md
+3. Setup: cp .env.example .env
+4. Get credentials from team lead
+5. Validate: ./scripts/validate-credentials.sh local
+6. Start: npm run dev
+
+
+FOR DOCKER DEPLOYMENT
+================================================================================
+
+1. Check DATABASE_URL in .env uses 'db' not 'localhost'
+2. Run: ./scripts/validate-credentials.sh docker
+3. Start: docker-compose up
+4. Check logs: docker-compose logs -f backend
+
+
+FOR PRODUCTION DEPLOYMENT
+================================================================================
+
+1. Use AWS Secrets Manager or similar (don't use .env files)
+2. Run: ./scripts/validate-credentials.sh production
+3. Verify DATABASE_URL uses real database endpoint (not localhost or db)
+4. Deploy via CI/CD pipeline
+
+
+QUICK CHECKLIST
+================================================================================
+
+Before npm run dev:
+  ☐ .env file exists
+  ☐ DATABASE_URL uses localhost
+  ☐ All API keys filled in
+  ☐ ./scripts/validate-credentials.sh local passes
+
+Before docker-compose up:
+  ☐ .env file exists
+  ☐ DATABASE_URL uses db (not localhost)
+  ☐ All API keys filled in
+  ☐ ./scripts/validate-credentials.sh docker passes
+
+Before git commit:
+  ☐ Not committing .env (only .env.example)
+  ☐ Pre-commit hook is installed
+  ☐ Git hook passes without errors
+
+Before deployment:
+  ☐ DATABASE_URL uses production endpoint
+  ☐ Different API keys used than local/staging
+  ☐ Credentials in secrets manager, not git
+  ☐ ./scripts/validate-credentials.sh production passes
+
+
+THE MOST COMMON MISTAKE
+================================================================================
+
+Using 'localhost' in DATABASE_URL for Docker containers:
+
+  Inside Docker, 'localhost' = the container itself (not your host machine)
+  To reach another container, use the service name: 'db'
+
+  LOCAL:  postgresql+asyncpg://user:pass@localhost:5432/db
+  DOCKER: postgresql+asyncpg://user:pass@db:5432/db
+                                          ^^
+                                      THE DIFFERENCE!
+
+
+GETTING HELP
+================================================================================
+
+Issue?  Run:
+  ./scripts/validate-credentials.sh <environment>
+  ./scripts/debug-config.sh
+
+Still stuck?  Read:
+  ENVIRONMENT_SETUP.md (Troubleshooting section)
+  CREDENTIAL_MANAGEMENT.md (Section 3: Validation Steps)
+
+Contact:  Ask team lead
+
+
+REMEMBER
+================================================================================
+
+✓ localhost for local development
+✓ db for Docker containers
+✓ your-endpoint for production
+✓ Never commit .env (add to .gitignore)
+✓ Validate before starting: ./scripts/validate-credentials.sh <env>
+✓ Use pre-commit hook to prevent credential leaks
+
+================================================================================
+Last Updated: January 15, 2026
+For more details see: CREDENTIAL_PREVENTION_SUMMARY.md
+================================================================================
