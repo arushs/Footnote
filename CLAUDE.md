@@ -1,62 +1,40 @@
-# Refinery Context (footnote)
+# Claude Code Context
 
-> **Recovery**: Run `gt prime` after compaction, clear, or new session
+## Important Directories
 
-Full context is injected by `gt prime` at session start.
+When troubleshooting issues or understanding the codebase, always check:
 
-## Quick Reference
+### `docs/solutions/`
+Contains documented solutions to problems that have been solved. Organized by category:
+- `database-issues/` - PostgreSQL, migrations, schema problems
+- `build-errors/` - Docker, dependency, compilation issues
+- `runtime-errors/` - Application crashes, API errors
+- `performance-issues/` - Slow queries, optimization fixes
 
-- Check MQ: `gt mq list`
-- Process next: `gt mq process`
+**Always search here first** when encountering an error - the solution may already be documented.
 
-## Project Overview
-
-**Refinery** is a full-stack RAG (Retrieval-Augmented Generation) application that enables users to chat with their Google Drive folders using AI-powered search.
-
-## Directory Structure
-
-```
-rig/
-├── backend/           # Python FastAPI (RAG engine)
-│   ├── app/
-│   │   ├── models/    # SQLAlchemy ORM (users, folders, files, chunks, conversations)
-│   │   ├── routes/    # auth, folders, chat endpoints
-│   │   └── services/  # embedding, retrieval, generation, drive API
-│   └── main.py
-├── frontend/          # React + TypeScript SPA
-│   └── src/
-│       ├── pages/     # LandingPage, FoldersPage, ChatPage
-│       ├── components/# chat, sidebar, sources, ui, overlay
-│       ├── hooks/     # useChat, useConversations, useFolderStatus
-│       └── contexts/  # AuthContext
-├── database/          # PostgreSQL schema with pgvector
-└── docker-compose.yml # Multi-container orchestration
-```
+### `docs/guides/`
+Contains setup guides and best practices:
+- Environment configuration
+- Credential management
+- Development setup
 
 ## Tech Stack
 
-### Backend
-- **Framework:** FastAPI (async)
-- **ORM:** SQLAlchemy with AsyncPG
-- **Database:** PostgreSQL 16 + pgvector extension
-- **Package Manager:** uv
+- **Backend**: FastAPI + SQLAlchemy + PostgreSQL (pgvector)
+- **Frontend**: React + Vite + TypeScript
+- **AI**: Fireworks AI (embeddings), Anthropic Claude (generation), Mistral (PDF OCR)
+- **Infrastructure**: Docker Compose
 
-### Frontend
-- **Framework:** React 18 + TypeScript 5.6
-- **Build:** Vite
-- **Styling:** Tailwind CSS + Radix UI
-- **Testing:** Playwright (E2E), Vitest (unit)
+## Common Issues
 
-### AI/ML
-- **Embeddings:** Together AI (m2-bert-80M, 768-dim)
-- **Reranking:** Llama-Rank V1
-- **LLM:** Anthropic Claude
+1. **Database connection errors**: Check `docs/solutions/database-issues/`
+2. **Indexing failures**: Check worker logs with `docker-compose logs worker`
+3. **Cross-platform dependency issues**: Explicit deps in `pyproject.toml` (e.g., jiter)
 
-### Auth & APIs
-- Google OAuth (Drive read-only scope)
-- Google Drive API for file access
+## Key Files
 
-## RAG Pipeline
-
-1. **Indexing:** Folder → Extract text → Chunk → Embed → Store vectors
-2. **Chat:** Query → Embed → Vector search → Rerank → Generate with citations
+- `docker-compose.yml` - Service definitions
+- `backend/app/worker.py` - Background indexing worker
+- `backend/pyproject.toml` - Python dependencies
+- `database/schema.sql` - Database schema
