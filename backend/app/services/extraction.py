@@ -392,6 +392,18 @@ class ExtractionService:
         "application/pdf",
     }
 
+    # Image types that should be skipped (not supported for text extraction)
+    IMAGE_MIMETYPES = {
+        "image/jpeg",
+        "image/png",
+        "image/gif",
+        "image/webp",
+        "image/bmp",
+        "image/tiff",
+        "image/svg+xml",
+        "application/vnd.google-apps.photo",
+    }
+
     def __init__(self):
         self.google_docs_extractor = GoogleDocsExtractor()
         self.pdf_extractor = PDFExtractor()
@@ -411,6 +423,10 @@ class ExtractionService:
     def is_pdf(self, mime_type: str) -> bool:
         """Check if mime type is a PDF."""
         return mime_type in self.PDF_MIMETYPES
+
+    def is_image(self, mime_type: str) -> bool:
+        """Check if mime type is an image (not supported for extraction)."""
+        return mime_type in self.IMAGE_MIMETYPES or mime_type.startswith("image/")
 
     def is_supported(self, mime_type: str) -> bool:
         """Check if the mime type is supported for extraction."""
