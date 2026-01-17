@@ -25,26 +25,45 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_ITERATIONS = 10
 
-AGENT_SYSTEM_PROMPT = """You are a helpful assistant with access to the user's Google Drive folder documents.
+
+def build_agent_system_prompt(
+    folder_name: str,
+    files_indexed: int,
+    files_total: int,
+    max_iterations: int,
+) -> str:
+    """Build the agent system prompt with dynamic folder context."""
+    return f"""You are a helpful assistant with access to the user's Google Drive folder documents.
+
+## Folder Context
+- **Folder**: {folder_name}
+- **Indexed Files**: {files_indexed}/{files_total}
+- **Iteration Limit**: You can search up to {max_iterations} times before synthesizing your answer
 
 ## Your Tools
 - **search_folder**: Search for relevant information using hybrid search (semantic + keyword)
-- **rewrite_query**: Reformulate queries when search results are poor
 - **get_file_chunks**: Fast - retrieve all indexed chunks for a file (pre-processed content)
 - **get_file**: Slower - download fresh content directly from Google Drive
 
 ## Workflow
 1. When the user asks a question, use search_folder to find relevant information
 2. Evaluate if the results are sufficient (look at relevance scores and content)
-3. If results are poor, use rewrite_query and search again
+3. If results are poor or incomplete, try a different search query with alternative terms
 4. Use get_file_chunks when you need more context from a file (fast, uses indexed content)
 5. Use get_file only when you need the absolute original content from Drive (slower)
 6. Generate your response with inline citations [filename]
+
+## Search Quality Guidance
+- RRF score > 0.5: Results are likely relevant, consider synthesizing
+- RRF score 0.3-0.5: May need refinement or alternative search terms
+- Multiple low-scoring results: Try a broader or more specific query
+- Empty results: Try different terminology or ask clarifying questions
 
 ## Guidelines
 - Be thorough but efficient - don't over-search if you have good results
 - Prefer get_file_chunks over get_file unless you specifically need fresh content
 - Cite your sources using [filename] format
+- If approaching your iteration limit, synthesize what you've found
 - If you can't find relevant information after trying, say so honestly"""
 
 
@@ -341,6 +360,9 @@ async def agentic_rag(
     folder_id: uuid.UUID,
     conversation: Conversation,
     user_message: str,
+    folder_name: str = "Documents",
+    files_indexed: int = 0,
+    files_total: int = 0,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
 ) -> AsyncGenerator[str, None]:
     """
@@ -354,6 +376,9 @@ async def agentic_rag(
         folder_id: Folder to search within
         conversation: Conversation object for message storage
         user_message: User's query
+        folder_name: Name of the folder for context
+        files_indexed: Number of indexed files
+        files_total: Total number of files
         max_iterations: Maximum number of tool-use iterations (default: 10)
 
     Yields:
@@ -380,13 +405,21 @@ async def agentic_rag(
         content=user_message,
     )
     db.add(user_msg)
-    await db.flush()
+    await db.commit()  # Explicit commit for streaming response
 
     # Track searched files for citation extraction
     searched_files: dict = {}
     client = get_client()
     iteration = 0
     response = None
+
+    # Build dynamic system prompt with folder context
+    system_prompt = build_agent_system_prompt(
+        folder_name=folder_name,
+        files_indexed=files_indexed,
+        files_total=files_total,
+        max_iterations=max_iterations,
+    )
 
     # Agent loop
     while iteration < max_iterations:
@@ -401,7 +434,7 @@ async def agentic_rag(
         response = await client.messages.create(
             model=settings.claude_model,
             max_tokens=4096,
-            system=AGENT_SYSTEM_PROMPT,
+            system=system_prompt,
             tools=ALL_TOOLS,
             messages=messages,
         )
@@ -417,9 +450,7 @@ async def agentic_rag(
 
                     # Emit tool status
                     tool_status = "searching" if block.name == "search_folder" else "processing"
-                    if block.name == "rewrite_query":
-                        tool_status = "rewriting"
-                    elif block.name == "get_file":
+                    if block.name in ("get_file", "get_file_chunks"):
                         tool_status = "reading_file"
 
                     yield f'data: {json.dumps({"agent_status": {"phase": tool_status, "iteration": iteration, "tool": block.name}})}\n\n'
@@ -485,7 +516,7 @@ Remember to cite sources using [filename] format. Synthesize the information you
             synthesis_response = await client.messages.create(
                 model=settings.claude_model,
                 max_tokens=4096,
-                system=AGENT_SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=synthesis_messages,
                 # No tools - forces text response
             )
@@ -513,7 +544,7 @@ Remember to cite sources using [filename] format. Synthesize the information you
         citations=citations,
     )
     db.add(assistant_msg)
-    await db.flush()
+    await db.commit()  # Explicit commit for streaming response
 
     # Send final message with metadata
     yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": list(searched_files.keys()), "conversation_id": str(conversation.id), "iterations": iteration})}\n\n'
