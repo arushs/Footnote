@@ -22,7 +22,8 @@ export function MessageList({
   onToggleSources,
 }: MessageListProps) {
 
-  if (messages.length === 0 && !streamingContent) {
+  // Show empty state only when not loading and no messages
+  if (messages.length === 0 && !streamingContent && !isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="text-center space-y-4">
