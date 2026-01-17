@@ -7,13 +7,16 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
+from tenacity import retry, retry_if_exception_type, wait_exponential, stop_after_attempt
 
 from app.database import async_session
+from app.config import settings
 from app.models.db_models import File, Chunk, IndexingJob, Session
 from app.services.drive import DriveService
 from app.services.extraction import ExtractionService
-from app.services.chunking import chunk_document, generate_file_preview
+from app.services.chunking import chunk_document, generate_file_preview, DocumentChunk
 from app.services.embedding import embed_document, embed_documents_batch
+from app.services.anthropic import get_client as get_anthropic_client
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -33,6 +36,106 @@ def calculate_backoff(attempts: int, base_delay: int = 30) -> timedelta:
 
 
 logger = logging.getLogger(__name__)
+
+
+# Contextual Retrieval: Generate context for chunks before embedding
+# See: https://www.anthropic.com/news/contextual-retrieval
+
+CONTEXT_PROMPT = """Document: {file_name}
+
+{document_excerpt}
+
+---
+Chunk to contextualize:
+{chunk_text}
+
+Write 1-2 sentences situating this chunk within the document. Output only the context."""
+
+
+@retry(
+    retry=retry_if_exception_type(Exception),
+    wait=wait_exponential(multiplier=1, min=2, max=30),
+    stop=stop_after_attempt(3),
+    reraise=False,
+)
+async def _generate_single_context(
+    client,
+    file_name: str,
+    document_excerpt: str,
+    chunk_text: str,
+) -> str | None:
+    """Generate context for a single chunk with retry."""
+    try:
+        response = await client.messages.create(
+            model=settings.claude_fast_model,
+            max_tokens=100,
+            temperature=0.0,
+            messages=[{
+                "role": "user",
+                "content": CONTEXT_PROMPT.format(
+                    file_name=file_name,
+                    document_excerpt=document_excerpt,
+                    chunk_text=chunk_text,
+                )
+            }]
+        )
+        return response.content[0].text.strip()
+    except Exception as e:
+        logger.warning(f"Context generation failed: {e}")
+        return None
+
+
+async def _generate_chunk_contexts(
+    file_name: str,
+    full_document: str,
+    chunks: list[DocumentChunk],
+    max_concurrent: int = 5,
+) -> list[str]:
+    """
+    Generate contexts for all chunks in parallel with bounded concurrency.
+
+    Uses Claude Haiku to generate a 1-2 sentence context for each chunk,
+    which is prepended before embedding to improve retrieval accuracy.
+
+    Args:
+        file_name: Name of the document for context
+        full_document: Full document text
+        chunks: List of DocumentChunk objects
+        max_concurrent: Max parallel LLM calls (default 5 to avoid rate limits)
+
+    Returns:
+        List of contextualized chunk texts (context + original text)
+    """
+    # Skip for very short documents - context adds no value
+    if len(full_document) < 500:
+        logger.debug(f"Skipping context generation for short document: {file_name}")
+        return [chunk.text for chunk in chunks]
+
+    # Truncate document excerpt to fit in context window
+    doc_excerpt = full_document[:6000]
+    if len(full_document) > 6000:
+        doc_excerpt += "\n[...truncated...]"
+
+    client = get_anthropic_client()
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def generate_with_limit(chunk: DocumentChunk) -> str:
+        async with semaphore:
+            ctx = await _generate_single_context(
+                client, file_name, doc_excerpt, chunk.text
+            )
+            if ctx:
+                return f"{ctx}\n\n{chunk.text}"
+            return chunk.text
+
+    logger.info(f"Generating context for {len(chunks)} chunks in {file_name}")
+    results = await asyncio.gather(*[generate_with_limit(c) for c in chunks])
+
+    # Count how many got context
+    contextualized = sum(1 for r, c in zip(results, chunks) if r != c.text)
+    logger.info(f"Generated context for {contextualized}/{len(chunks)} chunks")
+
+    return results
 
 
 async def claim_next_job() -> IndexingJob | None:
@@ -196,11 +299,20 @@ async def process_job(job: IndexingJob) -> None:
         await update_file_status(job.file_id, "indexed")
         return
 
-    # Step 5: Generate chunk embeddings in batches
-    chunk_texts = [c.text for c in chunks]
+    # Step 5: Generate contextualized chunk texts (Contextual Retrieval)
+    # This prepends LLM-generated context to each chunk before embedding,
+    # improving retrieval accuracy by 35-67% per Anthropic research.
+    full_document = "\n\n".join(b.text for b in document.blocks)
+    chunk_texts = await _generate_chunk_contexts(
+        file_name=file_info.file_name,
+        full_document=full_document,
+        chunks=chunks,
+    )
+
+    # Step 6: Generate chunk embeddings in batches
     chunk_embeddings = await embed_documents_batch(chunk_texts)
 
-    # Step 6: Store everything in database
+    # Step 7: Store everything in database
     async with async_session() as db:
         # Update file with preview and embedding
         await db.execute(
