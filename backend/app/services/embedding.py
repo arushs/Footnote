@@ -1,7 +1,6 @@
 """Embedding service using Fireworks AI via OpenAI SDK."""
 
 import asyncio
-from typing import Literal
 
 from openai import AsyncOpenAI
 
@@ -69,8 +68,7 @@ async def embed_documents_batch(texts: list[str]) -> list[list[float]]:
 
     # Split into optimal-sized batches
     batches = [
-        texts[i : i + MAX_EMBEDDING_BATCH]
-        for i in range(0, len(texts), MAX_EMBEDDING_BATCH)
+        texts[i : i + MAX_EMBEDDING_BATCH] for i in range(0, len(texts), MAX_EMBEDDING_BATCH)
     ]
 
     async def process_batch(batch: list[str]) -> list[list[float]]:
@@ -123,4 +121,4 @@ async def rerank(query: str, documents: list[str], top_k: int = 15) -> list[tupl
                 raise RuntimeError(f"Unexpected rerank response format: {list(data.keys())}")
             return [(item["index"], item["relevance_score"]) for item in results]
     except httpx.HTTPStatusError as e:
-        raise RuntimeError(f"Rerank API error {e.response.status_code}: {e.response.text}")
+        raise RuntimeError(f"Rerank API error {e.response.status_code}: {e.response.text}") from e

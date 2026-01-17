@@ -106,9 +106,7 @@ def chunk_document(blocks: list[TextBlock]) -> list[DocumentChunk]:
     return chunks
 
 
-def _split_large_text(
-    text: str, base_location: dict, start_index: int
-) -> list[DocumentChunk]:
+def _split_large_text(text: str, base_location: dict, start_index: int) -> list[DocumentChunk]:
     """Split a large text block into smaller chunks with overlap."""
     chunks = []
 

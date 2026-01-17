@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routes import auth, folders, chat
+from app.routes import auth, chat, folders
 from app.services.anthropic import close_client as close_anthropic_client
 
 # Configure logging

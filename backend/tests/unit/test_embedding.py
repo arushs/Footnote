@@ -1,25 +1,24 @@
 """Tests for the embedding service using Fireworks AI."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.services.embedding import (
-    embed_document,
-    embed_query,
-    embed_documents_batch,
-    rerank,
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
     RERANK_MODEL,
+    embed_document,
+    embed_documents_batch,
+    embed_query,
+    rerank,
 )
 
 
 def create_mock_embedding_response(embeddings: list[list[float]]):
     """Create a mock embedding response object."""
     response = MagicMock()
-    response.data = [
-        MagicMock(embedding=emb) for emb in embeddings
-    ]
+    response.data = [MagicMock(embedding=emb) for emb in embeddings]
     return response
 
 
@@ -119,11 +118,13 @@ class TestEmbedDocumentsBatch:
     @pytest.mark.asyncio
     async def test_batch_embedding_multiple_texts(self):
         """Batch embedding should handle multiple texts."""
-        mock_response = create_mock_embedding_response([
-            [0.1] * EMBEDDING_DIM,
-            [0.2] * EMBEDDING_DIM,
-            [0.3] * EMBEDDING_DIM,
-        ])
+        mock_response = create_mock_embedding_response(
+            [
+                [0.1] * EMBEDDING_DIM,
+                [0.2] * EMBEDDING_DIM,
+                [0.3] * EMBEDDING_DIM,
+            ]
+        )
 
         with patch("app.services.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
@@ -146,10 +147,12 @@ class TestEmbedDocumentsBatch:
     @pytest.mark.asyncio
     async def test_batch_embedding_uses_search_document_prefix(self):
         """Batch embedding should prefix all texts with search_document."""
-        mock_response = create_mock_embedding_response([
-            [0.1] * EMBEDDING_DIM,
-            [0.2] * EMBEDDING_DIM,
-        ])
+        mock_response = create_mock_embedding_response(
+            [
+                [0.1] * EMBEDDING_DIM,
+                [0.2] * EMBEDDING_DIM,
+            ]
+        )
 
         with patch("app.services.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()

@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent / ".env")
 
 from sqlalchemy import text
@@ -50,7 +51,9 @@ async def clean_database(preserve_auth: bool = True, dry_run: bool = False):
         preserve_auth: If True, keep users and sessions tables intact
         dry_run: If True, only show what would be deleted without actually deleting
     """
-    database_url = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder")
+    database_url = os.getenv(
+        "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder"
+    )
     engine = create_async_engine(database_url, echo=False)
 
     async with engine.begin() as conn:
@@ -78,10 +81,12 @@ async def clean_database(preserve_auth: bool = True, dry_run: bool = False):
         ]
 
         if not preserve_auth:
-            tables_to_clean.extend([
-                ("sessions", "users"),
-                ("users", None),
-            ])
+            tables_to_clean.extend(
+                [
+                    ("sessions", "users"),
+                    ("users", None),
+                ]
+            )
 
         for table, _ in tables_to_clean:
             count = counts.get(table, 0)
@@ -123,17 +128,13 @@ Examples:
   uv run python clean_db.py           # Clean data, preserve users/sessions
   uv run python clean_db.py --all     # Clean everything
   uv run python clean_db.py --dry-run # Preview what would be deleted
-        """
+        """,
     )
-    parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Also clean users and sessions tables"
-    )
+    parser.add_argument("--all", action="store_true", help="Also clean users and sessions tables")
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be deleted without actually deleting"
+        help="Show what would be deleted without actually deleting",
     )
 
     args = parser.parse_args()

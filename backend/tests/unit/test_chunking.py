@@ -1,14 +1,10 @@
 """Tests for the chunking service."""
 
-import pytest
-
 from app.services.chunking import (
-    chunk_document,
-    DocumentChunk,
-    generate_file_preview,
-    TARGET_CHUNK_SIZE,
     MAX_CHUNK_SIZE,
     MIN_CHUNK_SIZE,
+    chunk_document,
+    generate_file_preview,
 )
 from app.services.extraction import TextBlock
 
@@ -27,7 +23,11 @@ class TestDocumentChunking:
             ),
             TextBlock(
                 text="This is introductory content that provides a comprehensive overview of the document and its main topics covered throughout the various sections.",
-                location={"type": "doc", "element_type": "paragraph", "heading_path": "Introduction"},
+                location={
+                    "type": "doc",
+                    "element_type": "paragraph",
+                    "heading_path": "Introduction",
+                },
                 heading_context="Introduction",
             ),
             TextBlock(

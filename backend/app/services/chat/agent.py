@@ -9,18 +9,18 @@ import json
 import logging
 import re
 import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.db_models import Chunk, Conversation, File, Message, Session
-from app.services.agent_tools import ALL_TOOLS
+from app.models import Chunk, Conversation, File, Message, Session
 from app.services.anthropic import get_client
 from app.services.drive import DriveService
 from app.services.extraction import ExtractionService
 from app.services.hybrid_search import hybrid_search
+from app.services.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -120,27 +120,29 @@ async def _describe_image_with_vision(
         response = await client.messages.create(
             model=settings.claude_model,
             max_tokens=1000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": media_type,
-                            "data": base64.b64encode(image_content).decode("utf-8"),
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": base64.b64encode(image_content).decode("utf-8"),
+                            },
                         },
-                    },
-                    {
-                        "type": "text",
-                        "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
-                               "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
-                               "2. Any text visible in the image (transcribe it)\n"
-                               "3. Key visual details that might be relevant for search and retrieval\n"
-                               "4. The overall context or purpose of the image if apparent",
-                    },
-                ],
-            }],
+                        {
+                            "type": "text",
+                            "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
+                            "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
+                            "2. Any text visible in the image (transcribe it)\n"
+                            "3. Key visual details that might be relevant for search and retrieval\n"
+                            "4. The overall context or purpose of the image if apparent",
+                        },
+                    ],
+                }
+            ],
         )
         return response.content[0].text
     except Exception as e:
@@ -250,14 +252,16 @@ async def execute_tool(
 
             # Add to indexed_chunks for citation mapping
             source_num = len(indexed_chunks) + 1
-            indexed_chunks.append({
-                "chunk_id": str(r.chunk_id),
-                "file_id": str(r.file_id),
-                "file_name": r.file_name,
-                "location": location,
-                "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
-                "google_drive_url": build_google_drive_url(r.google_file_id),
-            })
+            indexed_chunks.append(
+                {
+                    "chunk_id": str(r.chunk_id),
+                    "file_id": str(r.file_id),
+                    "file_name": r.file_name,
+                    "location": location,
+                    "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
+                    "google_drive_url": build_google_drive_url(r.google_file_id),
+                }
+            )
 
             # Format like chat mode: [N] From 'filename' (location): content
             formatted_results.append(
@@ -295,9 +299,7 @@ async def execute_tool(
 
         # Fetch all chunks for the file to get full content
         chunks_result = await db.execute(
-            select(Chunk)
-            .where(Chunk.file_id == file_id)
-            .order_by(Chunk.chunk_index)
+            select(Chunk).where(Chunk.file_id == file_id).order_by(Chunk.chunk_index)
         )
         chunks = chunks_result.scalars().all()
 
@@ -309,16 +311,20 @@ async def execute_tool(
 
         # Add to indexed_chunks for citation (use next number)
         source_num = len(indexed_chunks) + 1
-        indexed_chunks.append({
-            "chunk_id": "",
-            "file_id": str(file.id),
-            "file_name": file.file_name,
-            "location": "Full document",
-            "excerpt": (file.file_preview or "")[:200],
-            "google_drive_url": build_google_drive_url(file.google_file_id),
-        })
+        indexed_chunks.append(
+            {
+                "chunk_id": "",
+                "file_id": str(file.id),
+                "file_name": file.file_name,
+                "location": "Full document",
+                "excerpt": (file.file_preview or "")[:200],
+                "google_drive_url": build_google_drive_url(file.google_file_id),
+            }
+        )
 
-        logger.info(f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name} as [{source_num}]")
+        logger.info(
+            f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name} as [{source_num}]"
+        )
 
         # Return formatted like chat mode
         return f"[{source_num}] Full content of '{file.file_name}':\n\n{full_content}"
@@ -375,18 +381,24 @@ async def execute_tool(
 
                 # Add to indexed_chunks for citation
                 source_num = len(indexed_chunks) + 1
-                indexed_chunks.append({
-                    "chunk_id": "",
-                    "file_id": str(file.id),
-                    "file_name": file.file_name,
-                    "location": "Image analysis",
-                    "excerpt": image_description[:200] if image_description else "",
-                    "google_drive_url": build_google_drive_url(file.google_file_id),
-                })
+                indexed_chunks.append(
+                    {
+                        "chunk_id": "",
+                        "file_id": str(file.id),
+                        "file_name": file.file_name,
+                        "location": "Image analysis",
+                        "excerpt": image_description[:200] if image_description else "",
+                        "google_drive_url": build_google_drive_url(file.google_file_id),
+                    }
+                )
 
-                logger.info(f"[AGENT] get_file analyzed image ({len(image_description)} chars) for {file.file_name} as [{source_num}]")
+                logger.info(
+                    f"[AGENT] get_file analyzed image ({len(image_description)} chars) for {file.file_name} as [{source_num}]"
+                )
 
-                return f"[{source_num}] Image analysis of '{file.file_name}':\n\n{image_description}"
+                return (
+                    f"[{source_num}] Image analysis of '{file.file_name}':\n\n{image_description}"
+                )
             else:
                 return json.dumps({"error": f"Unsupported file type: {file.mime_type}"})
 
@@ -395,16 +407,20 @@ async def execute_tool(
 
             # Add to indexed_chunks for citation
             source_num = len(indexed_chunks) + 1
-            indexed_chunks.append({
-                "chunk_id": "",
-                "file_id": str(file.id),
-                "file_name": file.file_name,
-                "location": "Full document (Google Drive)",
-                "excerpt": full_content[:200] if full_content else "",
-                "google_drive_url": build_google_drive_url(file.google_file_id),
-            })
+            indexed_chunks.append(
+                {
+                    "chunk_id": "",
+                    "file_id": str(file.id),
+                    "file_name": file.file_name,
+                    "location": "Full document (Google Drive)",
+                    "excerpt": full_content[:200] if full_content else "",
+                    "google_drive_url": build_google_drive_url(file.google_file_id),
+                }
+            )
 
-            logger.info(f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name} as [{source_num}]")
+            logger.info(
+                f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name} as [{source_num}]"
+            )
 
             # Return formatted like chat mode
             return f"[{source_num}] Full content of '{file.file_name}' (from Google Drive):\n\n{full_content}"
@@ -488,7 +504,7 @@ async def agentic_rag(
         logger.info(f"Agent iteration {iteration} for query: {user_message[:50]}...")
 
         # Emit status update
-        yield f'data: {json.dumps({"agent_status": {"phase": "searching", "iteration": iteration}})}\n\n'
+        yield f"data: {json.dumps({'agent_status': {'phase': 'searching', 'iteration': iteration}})}\n\n"
 
         # Non-streaming call for tool use
         logger.info(f"[AGENT] Calling Claude API (iteration {iteration})")
@@ -514,7 +530,7 @@ async def agentic_rag(
                     if block.name in ("get_file", "get_file_chunks"):
                         tool_status = "reading_file"
 
-                    yield f'data: {json.dumps({"agent_status": {"phase": tool_status, "iteration": iteration, "tool": block.name}})}\n\n'
+                    yield f"data: {json.dumps({'agent_status': {'phase': tool_status, 'iteration': iteration, 'tool': block.name}})}\n\n"
 
                     result = await execute_tool(
                         block.name,
@@ -524,11 +540,13 @@ async def agentic_rag(
                         indexed_chunks,
                     )
                     logger.info(f"[AGENT] Tool {block.name} result length: {len(result)} chars")
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result,
+                        }
+                    )
 
             # Add assistant response and tool results to conversation
             logger.info(f"[AGENT] Adding {len(tool_results)} tool results to conversation")
@@ -540,7 +558,7 @@ async def agentic_rag(
             break
 
     # Emit generating status
-    yield f'data: {json.dumps({"agent_status": {"phase": "generating"}})}\n\n'
+    yield f"data: {json.dumps({'agent_status': {'phase': 'generating'}})}\n\n"
 
     # Extract text from final response
     full_response = ""
@@ -549,7 +567,9 @@ async def agentic_rag(
             if hasattr(block, "text"):
                 full_response += block.text
 
-    logger.info(f"[AGENT] Final response length: {len(full_response)} chars, iterations: {iteration}")
+    logger.info(
+        f"[AGENT] Final response length: {len(full_response)} chars, iterations: {iteration}"
+    )
     logger.info(f"[AGENT] Indexed chunks: {len(indexed_chunks)}")
 
     # Get unique file names from indexed chunks
@@ -560,22 +580,26 @@ async def agentic_rag(
         logger.warning(f"[AGENT] Hit max iterations ({max_iterations}) - forcing final synthesis")
 
         # Build context summary from indexed chunks
-        context_summary = "\n".join([
-            f"[{i+1}] {chunk.get('file_name', '')}: {chunk.get('excerpt', '')[:100]}"
-            for i, chunk in enumerate(indexed_chunks)
-        ])
+        context_summary = "\n".join(
+            [
+                f"[{i + 1}] {chunk.get('file_name', '')}: {chunk.get('excerpt', '')[:100]}"
+                for i, chunk in enumerate(indexed_chunks)
+            ]
+        )
 
         # Make final call WITHOUT tools to force synthesis
         synthesis_messages = messages.copy()
-        synthesis_messages.append({
-            "role": "user",
-            "content": f"""Based on all the search results you've gathered, please provide your final answer now.
+        synthesis_messages.append(
+            {
+                "role": "user",
+                "content": f"""Based on all the search results you've gathered, please provide your final answer now.
 
 Available sources:
 {context_summary}
 
-Remember to cite sources using [1], [2], etc. format. Synthesize the information you found."""
-        })
+Remember to cite sources using [1], [2], etc. format. Synthesize the information you found.""",
+            }
+        )
 
         try:
             synthesis_response = await client.messages.create(
@@ -596,7 +620,7 @@ Remember to cite sources using [1], [2], etc. format. Synthesize the information
 
     # Stream the response to client
     for text in full_response:
-        yield f'data: {json.dumps({"token": text})}\n\n'
+        yield f"data: {json.dumps({'token': text})}\n\n"
 
     # Extract citations from the response (works like chat mode)
     citations = extract_citations_from_text(full_response, indexed_chunks)
@@ -612,4 +636,4 @@ Remember to cite sources using [1], [2], etc. format. Synthesize the information
     await db.commit()  # Explicit commit for streaming response
 
     # Send final message with metadata
-    yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": searched_file_names, "conversation_id": str(conversation.id), "iterations": iteration})}\n\n'
+    yield f"data: {json.dumps({'done': True, 'citations': citations, 'searched_files': searched_file_names, 'conversation_id': str(conversation.id), 'iterations': iteration})}\n\n"

@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models.db_models import Folder, File, IndexingJob, Session as DbSession, User
+from app.models import File, Folder, IndexingJob
+from app.models import Session as DbSession
 from app.routes.auth import get_current_session
 from app.services.drive import DriveService
 
@@ -43,9 +44,7 @@ async def list_folders(
     db: AsyncSession = Depends(get_db),
 ):
     """List all folders for the current user."""
-    result = await db.execute(
-        select(Folder).where(Folder.user_id == session.user_id)
-    )
+    result = await db.execute(select(Folder).where(Folder.user_id == session.user_id))
     folders = result.scalars().all()
 
     return FolderListResponse(
@@ -133,7 +132,7 @@ async def get_folder(
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
 
     result = await db.execute(
         select(Folder).where(
@@ -166,7 +165,7 @@ async def get_folder_status(
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
 
     result = await db.execute(
         select(Folder).where(
@@ -184,5 +183,3 @@ async def get_folder_status(
         files_total=folder.files_total,
         files_indexed=folder.files_indexed,
     )
-
-

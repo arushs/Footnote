@@ -10,7 +10,6 @@ from anthropic import AsyncAnthropic
 
 from app.config import settings
 
-
 # Singleton client instance
 _client: AsyncAnthropic | None = None
 

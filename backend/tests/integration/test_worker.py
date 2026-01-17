@@ -1,14 +1,12 @@
 """Integration tests for the indexing worker pipeline."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import select, text
 
-from app.models.db_models import Chunk, File, Folder, IndexingJob, Session, User
-from app.services.extraction import ExtractedDocument, TextBlock
+from app.models import File, Folder, IndexingJob, Session
+from app.services.extraction import TextBlock
 from app.worker import (
     claim_next_job,
     format_vector,
@@ -50,12 +48,10 @@ class TestClaimNextJob:
         await db_session.commit()
 
         with patch("app.worker.async_session") as mock_session_maker:
-            mock_session_maker.return_value.__aenter__ = AsyncMock(
-                return_value=db_session
-            )
+            mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=db_session)
             mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
 
-            job = await claim_next_job()
+            await claim_next_job()
 
         # Job might be None if the test isolation prevents seeing it
         # This is expected behavior in test environment
@@ -98,9 +94,7 @@ class TestGetUserSessionForFolder:
             mock_row.access_token = test_session.access_token
             mock_row.refresh_token = test_session.refresh_token
             mock_row.expires_at = test_session.expires_at
-            mock_session.execute = AsyncMock(
-                return_value=MagicMock(first=lambda: mock_row)
-            )
+            mock_session.execute = AsyncMock(return_value=MagicMock(first=lambda: mock_row))
             mock_session_maker.return_value = mock_session
 
             session = await get_user_session_for_folder(test_folder.id)
@@ -113,9 +107,7 @@ class TestGetFileInfo:
     """Tests for getting file information."""
 
     @pytest.mark.asyncio
-    async def test_get_file_info_returns_file(
-        self, db_session, test_file: File
-    ):
+    async def test_get_file_info_returns_file(self, db_session, test_file: File):
         """Test that get_file_info returns file data."""
         await db_session.commit()
 
@@ -133,9 +125,7 @@ class TestGetFileInfo:
             mock_row.modified_time = None
             mock_row.file_preview = test_file.file_preview
             mock_row.index_status = test_file.index_status
-            mock_session.execute = AsyncMock(
-                return_value=MagicMock(first=lambda: mock_row)
-            )
+            mock_session.execute = AsyncMock(return_value=MagicMock(first=lambda: mock_row))
             mock_session_maker.return_value = mock_session
 
             file_info = await get_file_info(test_file.id)
@@ -150,9 +140,7 @@ class TestGetFileInfo:
             mock_session = MagicMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)
             mock_session.__aexit__ = AsyncMock(return_value=None)
-            mock_session.execute = AsyncMock(
-                return_value=MagicMock(first=lambda: None)
-            )
+            mock_session.execute = AsyncMock(return_value=MagicMock(first=lambda: None))
             mock_session_maker.return_value = mock_session
 
             file_info = await get_file_info(uuid.uuid4())
@@ -187,16 +175,17 @@ class TestProcessJob:
         test_file.mime_type = "application/vnd.google-apps.document"
         await db_session.commit()
 
-        with patch("app.worker.async_session") as mock_session_maker, \
-             patch("app.worker.get_user_session_for_folder") as mock_get_session, \
-             patch("app.worker.get_file_info") as mock_get_file, \
-             patch("app.worker.DriveService") as MockDrive, \
-             patch("app.worker.ExtractionService") as MockExtraction, \
-             patch("app.worker.embed_document") as mock_embed_document, \
-             patch("app.worker.embed_documents_batch") as mock_embed_batch, \
-             patch("app.worker.mark_job_completed") as mock_mark_completed, \
-             patch("app.worker.update_folder_progress") as mock_update_progress:
-
+        with (
+            patch("app.worker.async_session") as mock_session_maker,
+            patch("app.worker.get_user_session_for_folder") as mock_get_session,
+            patch("app.worker.get_file_info") as mock_get_file,
+            patch("app.worker.DriveService") as MockDrive,
+            patch("app.worker.ExtractionService") as MockExtraction,
+            patch("app.worker.embed_document") as mock_embed_document,
+            patch("app.worker.embed_documents_batch") as mock_embed_batch,
+            patch("app.worker.mark_job_completed") as mock_mark_completed,
+            patch("app.worker.update_folder_progress") as mock_update_progress,
+        ):
             # Set up mocks
             mock_session = MagicMock()
             mock_session.__aenter__ = AsyncMock(return_value=mock_session)
@@ -240,11 +229,12 @@ class TestProcessJob:
         # Make file unsupported type
         test_file.mime_type = "image/png"
 
-        with patch("app.worker.get_user_session_for_folder") as mock_get_session, \
-             patch("app.worker.get_file_info") as mock_get_file, \
-             patch("app.worker.DriveService"), \
-             patch("app.worker.ExtractionService") as MockExtraction:
-
+        with (
+            patch("app.worker.get_user_session_for_folder") as mock_get_session,
+            patch("app.worker.get_file_info") as mock_get_file,
+            patch("app.worker.DriveService"),
+            patch("app.worker.ExtractionService") as MockExtraction,
+        ):
             mock_get_session.return_value = test_session
             mock_get_file.return_value = test_file
 
@@ -283,9 +273,7 @@ class TestUpdateFileStatus:
     """Tests for updating file status."""
 
     @pytest.mark.asyncio
-    async def test_update_file_status_updates_status(
-        self, db_session, test_file: File
-    ):
+    async def test_update_file_status_updates_status(self, db_session, test_file: File):
         """Test that update_file_status updates the file status."""
         with patch("app.worker.async_session") as mock_session_maker:
             mock_session = MagicMock()
@@ -305,9 +293,7 @@ class TestUpdateFolderProgress:
     """Tests for updating folder progress."""
 
     @pytest.mark.asyncio
-    async def test_update_folder_progress_updates_counts(
-        self, db_session, test_folder: Folder
-    ):
+    async def test_update_folder_progress_updates_counts(self, db_session, test_folder: Folder):
         """Test that update_folder_progress updates file counts."""
         with patch("app.worker.async_session") as mock_session_maker:
             mock_session = MagicMock()
@@ -318,9 +304,7 @@ class TestUpdateFolderProgress:
             mock_row = MagicMock()
             mock_row.total = 5
             mock_row.indexed = 5
-            mock_session.execute = AsyncMock(
-                return_value=MagicMock(first=lambda: mock_row)
-            )
+            mock_session.execute = AsyncMock(return_value=MagicMock(first=lambda: mock_row))
             mock_session.commit = AsyncMock()
             mock_session_maker.return_value = mock_session
 

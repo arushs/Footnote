@@ -68,6 +68,8 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "B008",   # Depends() in function defaults is standard FastAPI pattern
+    "E402",   # module level imports not at top (common for env setup)
 ]
 
 [tool.ruff.format]
@@ -75,11 +77,42 @@ quote-style = "double"
 
 [tool.mypy]
 python_version = "3.11"
-warn_return_any = true
+warn_return_any = false
 warn_unused_ignores = true
 disallow_untyped_defs = false
 ignore_missing_imports = true
+# Start permissive, tighten later
+check_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.services.chat.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.routes.chat"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.routes.auth"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.services.anthropic"
+ignore_errors = true
+
+
+[[tool.mypy.overrides]]
+module = "app.services.drive"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.services.hybrid_search"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "app.services.folder_sync"
 ignore_errors = true

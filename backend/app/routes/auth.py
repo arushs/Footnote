@@ -1,15 +1,15 @@
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response, Cookie
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models.db_models import User, Session
+from app.models import Session, User
 
 router = APIRouter()
 
@@ -78,9 +78,7 @@ async def google_callback(
         userinfo = userinfo_response.json()
 
     # Find or create user
-    result = await db.execute(
-        select(User).where(User.google_id == userinfo["id"])
-    )
+    result = await db.execute(select(User).where(User.google_id == userinfo["id"]))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -92,7 +90,7 @@ async def google_callback(
         await db.flush()
 
     # Create session with tokens
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+    expires_at = datetime.now(UTC) + timedelta(seconds=expires_in)
     session = Session(
         user_id=user.id,
         access_token=access_token,
@@ -126,9 +124,7 @@ async def logout(
     if session_id:
         try:
             session_uuid = uuid.UUID(session_id)
-            result = await db.execute(
-                select(Session).where(Session.id == session_uuid)
-            )
+            result = await db.execute(select(Session).where(Session.id == session_uuid))
             session = result.scalar_one_or_none()
             if session:
                 await db.delete(session)
@@ -151,26 +147,22 @@ async def get_current_user(
     try:
         session_uuid = uuid.UUID(session_id)
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid session")
+        raise HTTPException(status_code=401, detail="Invalid session") from None
 
-    result = await db.execute(
-        select(Session).where(Session.id == session_uuid)
-    )
+    result = await db.execute(select(Session).where(Session.id == session_uuid))
     session = result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=401, detail="Session not found")
 
     # Check if session is expired
-    if session.expires_at < datetime.now(timezone.utc):
+    if session.expires_at < datetime.now(UTC):
         # Try to refresh the token
         session = await refresh_access_token(session, db)
         if not session:
             raise HTTPException(status_code=401, detail="Session expired")
 
-    result = await db.execute(
-        select(User).where(User.id == session.user_id)
-    )
+    result = await db.execute(select(User).where(User.id == session.user_id))
     user = result.scalar_one_or_none()
 
     if not user:
@@ -206,9 +198,7 @@ async def refresh_access_token(session: Session, db: AsyncSession) -> Session | 
 
         tokens = token_response.json()
         session.access_token = tokens["access_token"]
-        session.expires_at = datetime.now(timezone.utc) + timedelta(
-            seconds=tokens.get("expires_in", 3600)
-        )
+        session.expires_at = datetime.now(UTC) + timedelta(seconds=tokens.get("expires_in", 3600))
         # Google sometimes returns a new refresh token
         if "refresh_token" in tokens:
             session.refresh_token = tokens["refresh_token"]
@@ -227,18 +217,16 @@ async def get_current_session(
     try:
         session_uuid = uuid.UUID(session_id)
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid session")
+        raise HTTPException(status_code=401, detail="Invalid session") from None
 
-    result = await db.execute(
-        select(Session).where(Session.id == session_uuid)
-    )
+    result = await db.execute(select(Session).where(Session.id == session_uuid))
     session = result.scalar_one_or_none()
 
     if not session:
         raise HTTPException(status_code=401, detail="Session not found")
 
     # Check if session is expired and refresh if needed
-    if session.expires_at < datetime.now(timezone.utc):
+    if session.expires_at < datetime.now(UTC):
         session = await refresh_access_token(session, db)
         if not session:
             raise HTTPException(status_code=401, detail="Session expired")

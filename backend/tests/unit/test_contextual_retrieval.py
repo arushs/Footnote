@@ -1,8 +1,9 @@
 """Tests for contextual retrieval functionality in the worker."""
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.services.chunking import DocumentChunk
 
@@ -231,9 +232,7 @@ async def test_file_name_included_in_prompt():
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
 
-        await _generate_chunk_contexts(
-            "quarterly_report_2024.pdf", "A" * 600, chunks
-        )
+        await _generate_chunk_contexts("quarterly_report_2024.pdf", "A" * 600, chunks)
 
         assert captured_content is not None
         assert "quarterly_report_2024.pdf" in captured_content
@@ -344,10 +343,7 @@ async def test_concurrent_limit_respected():
         from app.worker import _generate_chunk_contexts
 
         # Create 10 chunks to process
-        chunks = [
-            DocumentChunk(text=f"Chunk {i}", location={}, chunk_index=i)
-            for i in range(10)
-        ]
+        chunks = [DocumentChunk(text=f"Chunk {i}", location={}, chunk_index=i) for i in range(10)]
 
         # Use max_concurrent=3
         await _generate_chunk_contexts("doc.pdf", "A" * 600, chunks, max_concurrent=3)
@@ -359,8 +355,10 @@ async def test_concurrent_limit_respected():
 @pytest.mark.asyncio
 async def test_uses_correct_model():
     """Test that the correct model (claude_fast_model) is used."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client, \
-         patch("app.worker.settings") as mock_settings:
+    with (
+        patch("app.worker.get_anthropic_client") as mock_get_client,
+        patch("app.worker.settings") as mock_settings,
+    ):
         mock_settings.claude_fast_model = "claude-3-haiku-20240307"
 
         mock_client = MagicMock()
@@ -540,7 +538,7 @@ async def test_preserves_chunk_order():
                     call_order.append(i)
                     break
             mock_response = MagicMock()
-            mock_response.content = [MagicMock(text=f"Context for chunk.")]
+            mock_response.content = [MagicMock(text="Context for chunk.")]
             return mock_response
 
         mock_client.messages.create = mock_create
@@ -549,8 +547,7 @@ async def test_preserves_chunk_order():
         from app.worker import _generate_chunk_contexts
 
         chunks = [
-            DocumentChunk(text=f"Chunk {i} content", location={}, chunk_index=i)
-            for i in range(5)
+            DocumentChunk(text=f"Chunk {i} content", location={}, chunk_index=i) for i in range(5)
         ]
 
         results = await _generate_chunk_contexts("doc.pdf", "A" * 600, chunks)

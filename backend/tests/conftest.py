@@ -2,9 +2,9 @@
 
 import os
 import uuid
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 @dataclass
 class MockFileMetadata:
     """Mock FileMetadata for testing without importing drive module."""
+
     id: str
     name: str
     mime_type: str
@@ -36,7 +37,7 @@ os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["FRONTEND_URL"] = "http://localhost:3000"
 
 from app.database import Base, get_db
-from app.models.db_models import (
+from app.models import (
     Chunk,
     Conversation,
     File,
@@ -47,7 +48,6 @@ from app.models.db_models import (
     User,
 )
 from main import app
-
 
 # Test database engine
 test_engine = create_async_engine(
@@ -65,6 +65,7 @@ test_async_session = async_sessionmaker(
 def event_loop():
     """Create an instance of the default event loop for each test case."""
     import asyncio
+
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
@@ -91,6 +92,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def override_db(db_session: AsyncSession):
     """Override the get_db dependency to use test database."""
+
     async def _get_test_db():
         try:
             yield db_session
@@ -133,7 +135,7 @@ async def test_session(db_session: AsyncSession, test_user: User) -> Session:
         user_id=test_user.id,
         access_token="test-access-token",
         refresh_token="test-refresh-token",
-        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     db_session.add(session)
     await db_session.flush()
@@ -148,7 +150,7 @@ async def expired_session(db_session: AsyncSession, test_user: User) -> Session:
         user_id=test_user.id,
         access_token="expired-access-token",
         refresh_token="expired-refresh-token",
-        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        expires_at=datetime.now(UTC) - timedelta(hours=1),
     )
     db_session.add(session)
     await db_session.flush()
@@ -261,9 +263,7 @@ async def test_conversation(db_session: AsyncSession, test_folder: Folder) -> Co
 
 
 @pytest.fixture
-async def test_messages(
-    db_session: AsyncSession, test_conversation: Conversation
-) -> list[Message]:
+async def test_messages(db_session: AsyncSession, test_conversation: Conversation) -> list[Message]:
     """Create test messages in a conversation."""
     messages = [
         Message(
@@ -319,9 +319,7 @@ async def test_indexing_job(
 @pytest.fixture
 def mock_google_oauth():
     """Mock Google OAuth token exchange and userinfo."""
-    with patch("httpx.AsyncClient.post") as mock_post, \
-         patch("httpx.AsyncClient.get") as mock_get:
-
+    with patch("httpx.AsyncClient.post") as mock_post, patch("httpx.AsyncClient.get") as mock_get:
         # Mock token exchange response
         mock_token_response = MagicMock()
         mock_token_response.status_code = 200
@@ -370,7 +368,9 @@ def mock_drive_service():
             return files, None
 
         mock_instance.list_files = AsyncMock(side_effect=mock_list_files)
-        mock_instance.export_google_doc = AsyncMock(return_value="<html><body>Test content</body></html>")
+        mock_instance.export_google_doc = AsyncMock(
+            return_value="<html><body>Test content</body></html>"
+        )
         mock_instance.download_file = AsyncMock(return_value=b"PDF content")
 
         yield mock_instance
@@ -379,11 +379,12 @@ def mock_drive_service():
 @pytest.fixture
 def mock_embedding_service():
     """Mock embedding and reranking services."""
-    with patch("app.services.embedding.embed_document") as mock_embed_document, \
-         patch("app.services.embedding.embed_query") as mock_embed_query, \
-         patch("app.services.embedding.embed_documents_batch") as mock_embed_batch, \
-         patch("app.services.embedding.rerank") as mock_rerank:
-
+    with (
+        patch("app.services.embedding.embed_document") as mock_embed_document,
+        patch("app.services.embedding.embed_query") as mock_embed_query,
+        patch("app.services.embedding.embed_documents_batch") as mock_embed_batch,
+        patch("app.services.embedding.rerank") as mock_rerank,
+    ):
         # Return 768-dimensional dummy embeddings
         mock_embed_document.return_value = [0.1] * 768
         mock_embed_query.return_value = [0.1] * 768
@@ -418,6 +419,7 @@ def mock_anthropic():
             async def gen():
                 for token in ["This ", "is ", "a ", "test ", "response. ", "[1]"]:
                     yield token
+
             return gen()
 
     mock_client.messages.stream.return_value = MockStream()

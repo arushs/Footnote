@@ -1,13 +1,14 @@
 """Integration tests for folder management routes."""
 
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models.db_models import File, Folder, IndexingJob
+from app.models import File, Folder, IndexingJob
 
 
 class TestListFolders:
@@ -71,9 +72,7 @@ class TestCreateFolder:
 
         # Verify files and indexing jobs were created
         folder_id = uuid.UUID(data["id"])
-        result = await db_session.execute(
-            select(File).where(File.folder_id == folder_id)
-        )
+        result = await db_session.execute(select(File).where(File.folder_id == folder_id))
         files = result.scalars().all()
         assert len(files) == 2
 
@@ -122,9 +121,7 @@ class TestGetFolder:
     """Tests for getting folder details."""
 
     @pytest.mark.asyncio
-    async def test_get_folder_returns_details(
-        self, auth_client: AsyncClient, test_folder: Folder
-    ):
+    async def test_get_folder_returns_details(self, auth_client: AsyncClient, test_folder: Folder):
         """Test that get folder returns folder details."""
         response = await auth_client.get(f"/api/folders/{test_folder.id}")
 
@@ -158,8 +155,9 @@ class TestGetFolder:
     ):
         """Test that user cannot access another user's folder."""
         # Create another user and session
-        from app.models.db_models import Session, User
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+
+        from app.models import Session, User
 
         other_user = User(
             id=uuid.uuid4(),
@@ -174,7 +172,7 @@ class TestGetFolder:
             user_id=other_user.id,
             access_token="other-token",
             refresh_token="other-refresh",
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         db_session.add(other_session)
         await db_session.flush()
@@ -189,9 +187,7 @@ class TestGetFolderStatus:
     """Tests for getting folder indexing status."""
 
     @pytest.mark.asyncio
-    async def test_get_folder_status_ready(
-        self, auth_client: AsyncClient, test_folder: Folder
-    ):
+    async def test_get_folder_status_ready(self, auth_client: AsyncClient, test_folder: Folder):
         """Test that status returns ready for indexed folder."""
         response = await auth_client.get(f"/api/folders/{test_folder.id}/status")
 
@@ -220,5 +216,3 @@ class TestGetFolderStatus:
         response = await auth_client.get(f"/api/folders/{uuid.uuid4()}/status")
 
         assert response.status_code == 404
-
-
