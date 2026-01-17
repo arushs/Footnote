@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Message, Citation, ChatState } from '../types'
 import { addToast } from '../components/ui/toast'
 
@@ -19,6 +19,22 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
   })
 
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Reset chat state when folderId changes
+  useEffect(() => {
+    // Abort any in-flight request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    // Reset to initial state for the new folder
+    setState({
+      messages: [],
+      isLoading: false,
+      currentConversationId: null,
+      streamingContent: '',
+      streamingCitations: {},
+    })
+  }, [folderId])
 
   const sendMessage = useCallback(async (content: string) => {
     if (!enabled || !content.trim() || state.isLoading) return
@@ -165,6 +181,13 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
   }, [])
 
   const loadConversation = useCallback(async (conversationId: string) => {
+    // Set loading state and clear previous messages
+    setState(prev => ({
+      ...prev,
+      isLoading: true,
+      currentConversationId: conversationId,
+    }))
+
     try {
       const response = await fetch(`/api/conversations/${conversationId}/messages`, {
         credentials: 'include',
@@ -175,11 +198,15 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
       setState(prev => ({
         ...prev,
         messages,
-        currentConversationId: conversationId,
+        isLoading: false,
       }))
     } catch (error) {
       console.error('Failed to load conversation:', error)
       addToast('Failed to load conversation', 'error')
+      setState(prev => ({
+        ...prev,
+        isLoading: false,
+      }))
     }
   }, [])
 
