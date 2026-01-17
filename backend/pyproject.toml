@@ -1,5 +1,5 @@
 [project]
-name = "mayor-backend"
+name = "footnote-backend"
 version = "0.1.0"
 description = "Talk to Folder - RAG backend for Google Drive"
 requires-python = ">=3.11"
