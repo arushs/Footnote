@@ -97,10 +97,15 @@ async def execute_tool(
 
     Security: Validates folder ownership before file access.
     """
+    logger.info(f"[AGENT] Executing tool: {tool_name} with input: {tool_input}")
+
     if tool_name == "search_folder":
         query = tool_input.get("query", "")
         if not query or not query.strip():
+            logger.warning("[AGENT] Empty query provided to search_folder")
             return json.dumps({"error": "Empty query provided", "chunks": []})
+
+        logger.info(f"[AGENT] Searching for: '{query}' in folder {folder_id}")
 
         try:
             # hybrid_search already calls embed_query internally
@@ -110,8 +115,9 @@ async def execute_tool(
                 folder_id=folder_id,
                 top_k=15,
             )
+            logger.info(f"[AGENT] Search returned {len(results)} results")
         except Exception as e:
-            logger.error(f"Search failed: {e}")
+            logger.error(f"[AGENT] Search failed: {e}", exc_info=True)
             return json.dumps({"error": f"Search failed: {str(e)}", "chunks": []})
 
         chunks_data = []
@@ -137,6 +143,11 @@ async def execute_tool(
                 "score": round(r.rrf_score, 4),
             })
 
+        if chunks_data:
+            logger.info(f"[AGENT] Top result: {chunks_data[0]['file_name']} (score: {chunks_data[0]['score']})")
+        else:
+            logger.warning("[AGENT] No search results found")
+
         return json.dumps({
             "chunks": chunks_data,
             "total_found": len(results),
@@ -144,6 +155,7 @@ async def execute_tool(
 
     elif tool_name == "rewrite_query":
         # Use a fast model to rewrite the query
+        logger.info(f"[AGENT] Rewriting query: '{tool_input.get('original_query', '')}' with feedback: '{tool_input.get('feedback', '')}'")
         client = get_client()
         rewrite_response = await client.messages.create(
             model="claude-haiku-4-20250514",
@@ -158,7 +170,9 @@ Problem with results: {tool_input.get('feedback', '')}
 Return ONLY the rewritten query, nothing else."""
             }]
         )
-        return rewrite_response.content[0].text.strip()
+        rewritten = rewrite_response.content[0].text.strip()
+        logger.info(f"[AGENT] Rewritten query: '{rewritten}'")
+        return rewritten
 
     elif tool_name == "get_file":
         file_id_str = tool_input.get("file_id", "")
@@ -259,6 +273,7 @@ async def agentic_rag(
         yield f'data: {json.dumps({"agent_status": {"phase": "searching", "iteration": iteration}})}\n\n'
 
         # Non-streaming call for tool use
+        logger.info(f"[AGENT] Calling Claude API (iteration {iteration})")
         response = await client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
@@ -266,6 +281,7 @@ async def agentic_rag(
             tools=ALL_TOOLS,
             messages=messages,
         )
+        logger.info(f"[AGENT] Claude response stop_reason: {response.stop_reason}")
 
         # Check if model wants to use tools
         if response.stop_reason == "tool_use":
@@ -291,6 +307,7 @@ async def agentic_rag(
                         db,
                         searched_files,
                     )
+                    logger.info(f"[AGENT] Tool {block.name} result length: {len(result)} chars")
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -298,6 +315,7 @@ async def agentic_rag(
                     })
 
             # Add assistant response and tool results to conversation
+            logger.info(f"[AGENT] Adding {len(tool_results)} tool results to conversation")
             messages.append({"role": "assistant", "content": response.content})
             messages.append({"role": "user", "content": tool_results})
 
@@ -315,8 +333,12 @@ async def agentic_rag(
             if hasattr(block, "text"):
                 full_response += block.text
 
+    logger.info(f"[AGENT] Final response length: {len(full_response)} chars, iterations: {iteration}")
+    logger.info(f"[AGENT] Searched files: {list(searched_files.keys())}")
+
     # Add note if we hit max iterations
     if iteration >= MAX_ITERATIONS and response and response.stop_reason == "tool_use":
+        logger.warning(f"[AGENT] Hit max iterations ({MAX_ITERATIONS}) with stop_reason still tool_use")
         full_response += "\n\n*Note: I searched multiple times but found limited relevant information. The answer above is based on the best available results.*"
 
     # Stream the response to client

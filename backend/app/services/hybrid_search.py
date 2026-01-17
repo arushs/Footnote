@@ -1,5 +1,6 @@
 """Hybrid search service combining vector similarity and keyword matching."""
 
+import logging
 import uuid
 from dataclasses import dataclass
 
@@ -8,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedding import embed_query, rerank
 from app.services.retrieval import RetrievedChunk, format_vector
+
+logger = logging.getLogger(__name__)
 
 
 # RRF fusion constant (higher values give more weight to top results)
@@ -159,9 +162,15 @@ async def hybrid_search(
         List of hybrid search results ordered by combined RRF score
     """
     # Run both searches in parallel conceptually (both are async)
+    logger.info(f"[HYBRID] Starting hybrid search for query: '{query[:50]}...' in folder {folder_id}")
     query_embedding = await embed_query(query)
+    logger.info(f"[HYBRID] Got embedding (length: {len(query_embedding)})")
+
     vector_results = await vector_search_with_rank(db, query_embedding, folder_id, top_k)
+    logger.info(f"[HYBRID] Vector search returned {len(vector_results)} results")
+
     keyword_results = await keyword_search(db, query, folder_id, top_k)
+    logger.info(f"[HYBRID] Keyword search returned {len(keyword_results)} results")
 
     # Build lookup maps
     keyword_ranks: dict[uuid.UUID, int] = {
