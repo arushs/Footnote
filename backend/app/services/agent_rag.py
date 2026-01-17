@@ -54,12 +54,9 @@ def build_agent_system_prompt(
 6. Generate your response with numbered inline citations [1], [2], etc.
 
 ## Citation Format (IMPORTANT)
-- Use numbered citations like [1], [2], [3] inline in your response
-- At the END of your response, include a Sources section mapping numbers to filenames:
-
-Sources:
-[1] filename1.pdf
-[2] filename2.docx
+- Search results are numbered like [1], [2], [3] - use these exact numbers when citing
+- Include citations inline in your response, e.g., "According to the report [1], revenue increased..."
+- You can cite the same source multiple times
 
 ## Search Quality Guidance
 - RRF score > 0.5: Results are likely relevant, consider synthesizing
@@ -70,7 +67,7 @@ Sources:
 ## Guidelines
 - Be thorough but efficient - don't over-search if you have good results
 - Prefer get_file_chunks over get_file unless you specifically need fresh content
-- Always include numbered citations and a Sources section at the end
+- Always cite your sources using the [N] numbers from search results
 - If approaching your iteration limit, synthesize what you've found
 - If you can't find relevant information after trying, say so honestly"""
 
@@ -123,72 +120,31 @@ async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) ->
     return None
 
 
-def extract_citations_from_text(text: str, searched_files: dict) -> dict:
+def extract_citations_from_text(text: str, indexed_chunks: list) -> dict:
     """Extract numbered citations from agent response.
 
-    Expects format like:
-    - Inline: [1], [2], [3]
-    - Sources section at end:
-      Sources:
-      [1] filename1.pdf
-      [2] filename2.docx
+    Works like chat mode - finds [1], [2] etc and maps to the indexed_chunks list.
     """
     citations = {}
 
-    # Look for Sources section at the end
-    sources_match = re.search(r"Sources?:\s*\n((?:\[\d+\][^\n]+\n?)+)", text, re.IGNORECASE)
+    # Find all [number] patterns in the text
+    pattern = r"\[(\d+)\]"
+    matches = re.findall(pattern, text)
+    citation_numbers = {int(m) for m in matches}
 
-    if sources_match:
-        sources_text = sources_match.group(1)
-        # Parse [number] filename lines
-        source_pattern = r"\[(\d+)\]\s*(.+)"
-        for match in re.finditer(source_pattern, sources_text):
-            num = match.group(1)
-            filename = match.group(2).strip()
+    logger.info(f"[AGENT] Found citation numbers: {citation_numbers}")
 
-            # Find the file in searched_files (partial match)
-            file_info = None
-            for searched_name, info in searched_files.items():
-                if filename in searched_name or searched_name in filename:
-                    file_info = info
-                    filename = searched_name  # Use the full name
-                    break
-
-            if file_info:
-                citations[num] = {
-                    "chunk_id": str(file_info.get("chunk_id", "")),
-                    "file_name": filename,
-                    "location": file_info.get("location", "Document"),
-                    "excerpt": file_info.get("excerpt", ""),
-                    "google_drive_url": file_info.get("google_drive_url", ""),
-                }
-                logger.info(f"[AGENT] Mapped citation [{num}] -> {filename}")
-            else:
-                # Still create a citation even if not in searched_files
-                citations[num] = {
-                    "chunk_id": "",
-                    "file_name": filename,
-                    "location": "Document",
-                    "excerpt": "",
-                    "google_drive_url": "",
-                }
-                logger.info(f"[AGENT] Citation [{num}] -> {filename} (not in searched_files)")
-    else:
-        # Fallback: try to match [filename] directly (old format)
-        pattern = r"\[([^\]]+)\]"
-        matches = re.findall(pattern, text)
-
-        for i, match in enumerate(matches, 1):
-            if not match.isdigit() and match in searched_files:
-                file_info = searched_files[match]
-                citations[str(i)] = {
-                    "chunk_id": str(file_info.get("chunk_id", "")),
-                    "file_name": match,
-                    "location": file_info.get("location", "Document"),
-                    "excerpt": file_info.get("excerpt", ""),
-                    "google_drive_url": file_info.get("google_drive_url", ""),
-                }
-                logger.info(f"[AGENT] Fallback matched: [{match}]")
+    for num in citation_numbers:
+        if 1 <= num <= len(indexed_chunks):
+            chunk = indexed_chunks[num - 1]
+            citations[str(num)] = {
+                "chunk_id": str(chunk.get("chunk_id", "")),
+                "file_name": chunk.get("file_name", ""),
+                "location": chunk.get("location", "Document"),
+                "excerpt": chunk.get("excerpt", ""),
+                "google_drive_url": chunk.get("google_drive_url", ""),
+            }
+            logger.info(f"[AGENT] Mapped citation [{num}] -> {chunk.get('file_name')}")
 
     logger.info(f"[AGENT] Final citations count: {len(citations)}")
     return citations
@@ -199,12 +155,13 @@ async def execute_tool(
     tool_input: dict,
     folder_id: uuid.UUID,
     db: AsyncSession,
-    searched_files: dict,
+    indexed_chunks: list,
 ) -> str:
     """
     Execute an agent tool and return results.
 
     Security: Validates folder ownership before file access.
+    indexed_chunks: A list that accumulates all chunks found, numbered for citation.
     """
     logger.info(f"[AGENT] Executing tool: {tool_name} with input: {tool_input}")
 
@@ -212,7 +169,7 @@ async def execute_tool(
         query = tool_input.get("query", "")
         if not query or not query.strip():
             logger.warning("[AGENT] Empty query provided to search_folder")
-            return json.dumps({"error": "Empty query provided", "chunks": []})
+            return json.dumps({"error": "Empty query provided", "results": []})
 
         logger.info(f"[AGENT] Searching for: '{query}' in folder {folder_id}")
 
@@ -227,40 +184,36 @@ async def execute_tool(
             logger.info(f"[AGENT] Search returned {len(results)} results")
         except Exception as e:
             logger.error(f"[AGENT] Search failed: {e}", exc_info=True)
-            return json.dumps({"error": f"Search failed: {str(e)}", "chunks": []})
+            return json.dumps({"error": f"Search failed: {str(e)}", "results": []})
 
-        chunks_data = []
+        # Format results with source numbers like chat mode
+        formatted_results = []
         for r in results[:10]:
             location = format_location(r.location)
             excerpt = r.chunk_text[:500] if len(r.chunk_text) > 500 else r.chunk_text
 
-            # Track searched files for citation extraction later
-            if r.file_name not in searched_files:
-                searched_files[r.file_name] = {
-                    "chunk_id": r.chunk_id,
-                    "file_id": r.file_id,
-                    "location": location,
-                    "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
-                    "google_drive_url": build_google_drive_url(r.google_file_id),
-                }
-
-            chunks_data.append({
+            # Add to indexed_chunks for citation mapping
+            source_num = len(indexed_chunks) + 1
+            indexed_chunks.append({
+                "chunk_id": str(r.chunk_id),
                 "file_id": str(r.file_id),
                 "file_name": r.file_name,
-                "content": excerpt,
                 "location": location,
-                "score": round(r.rrf_score, 4),
+                "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
+                "google_drive_url": build_google_drive_url(r.google_file_id),
             })
 
-        if chunks_data:
-            logger.info(f"[AGENT] Top result: {chunks_data[0]['file_name']} (score: {chunks_data[0]['score']})")
+            # Format like chat mode: [N] From 'filename' (location): content
+            formatted_results.append(
+                f"[{source_num}] From '{r.file_name}' ({location}):\n{excerpt}"
+            )
+
+        if formatted_results:
+            logger.info(f"[AGENT] Top result score: {results[0].rrf_score:.4f}")
         else:
             logger.warning("[AGENT] No search results found")
 
-        return json.dumps({
-            "chunks": chunks_data,
-            "total_found": len(results),
-        })
+        return "\n\n---\n\n".join(formatted_results) if formatted_results else "No results found."
 
     elif tool_name == "get_file_chunks":
         # Fast: Return pre-indexed chunks
@@ -298,24 +251,21 @@ async def execute_tool(
         else:
             full_content = file.file_preview or "No content available"
 
-        # Track file for citation extraction
-        if file.file_name not in searched_files:
-            searched_files[file.file_name] = {
-                "chunk_id": "",
-                "file_id": file.id,
-                "location": "Full document",
-                "excerpt": (file.file_preview or "")[:200],
-                "google_drive_url": build_google_drive_url(file.google_file_id),
-            }
-
-        logger.info(f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name}")
-
-        return json.dumps({
+        # Add to indexed_chunks for citation (use next number)
+        source_num = len(indexed_chunks) + 1
+        indexed_chunks.append({
+            "chunk_id": "",
+            "file_id": str(file.id),
             "file_name": file.file_name,
-            "content": full_content,
-            "mime_type": file.mime_type,
-            "num_chunks": len(chunks),
+            "location": "Full document",
+            "excerpt": (file.file_preview or "")[:200],
+            "google_drive_url": build_google_drive_url(file.google_file_id),
         })
+
+        logger.info(f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name} as [{source_num}]")
+
+        # Return formatted like chat mode
+        return f"[{source_num}] Full content of '{file.file_name}':\n\n{full_content}"
 
     elif tool_name == "get_file":
         # Slower: Download fresh from Google Drive
@@ -365,24 +315,21 @@ async def execute_tool(
             # Combine all text blocks
             full_content = "\n\n".join(block.text for block in document.blocks)
 
-            # Track file for citation extraction
-            if file.file_name not in searched_files:
-                searched_files[file.file_name] = {
-                    "chunk_id": "",
-                    "file_id": file.id,
-                    "location": "Full document",
-                    "excerpt": full_content[:200] if full_content else "",
-                    "google_drive_url": build_google_drive_url(file.google_file_id),
-                }
-
-            logger.info(f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name}")
-
-            return json.dumps({
+            # Add to indexed_chunks for citation
+            source_num = len(indexed_chunks) + 1
+            indexed_chunks.append({
+                "chunk_id": "",
+                "file_id": str(file.id),
                 "file_name": file.file_name,
-                "content": full_content,
-                "mime_type": file.mime_type,
-                "source": "google_drive",
+                "location": "Full document (Google Drive)",
+                "excerpt": full_content[:200] if full_content else "",
+                "google_drive_url": build_google_drive_url(file.google_file_id),
             })
+
+            logger.info(f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name} as [{source_num}]")
+
+            # Return formatted like chat mode
+            return f"[{source_num}] Full content of '{file.file_name}' (from Google Drive):\n\n{full_content}"
 
         except Exception as e:
             logger.error(f"[AGENT] Failed to download file {file.file_name}: {e}")
@@ -443,8 +390,8 @@ async def agentic_rag(
     db.add(user_msg)
     await db.commit()  # Explicit commit for streaming response
 
-    # Track searched files for citation extraction
-    searched_files: dict = {}
+    # Track indexed chunks for citation extraction (numbered like chat mode)
+    indexed_chunks: list = []
     client = get_client()
     iteration = 0
     response = None
@@ -496,7 +443,7 @@ async def agentic_rag(
                         block.input,
                         folder_id,
                         db,
-                        searched_files,
+                        indexed_chunks,
                     )
                     logger.info(f"[AGENT] Tool {block.name} result length: {len(result)} chars")
                     tool_results.append({
@@ -525,16 +472,19 @@ async def agentic_rag(
                 full_response += block.text
 
     logger.info(f"[AGENT] Final response length: {len(full_response)} chars, iterations: {iteration}")
-    logger.info(f"[AGENT] Searched files: {list(searched_files.keys())}")
+    logger.info(f"[AGENT] Indexed chunks: {len(indexed_chunks)}")
+
+    # Get unique file names from indexed chunks
+    searched_file_names = list({chunk.get("file_name", "") for chunk in indexed_chunks})
 
     # If we hit max iterations with tool_use, force a final synthesis
     if iteration >= max_iterations and response and response.stop_reason == "tool_use":
         logger.warning(f"[AGENT] Hit max iterations ({max_iterations}) - forcing final synthesis")
 
-        # Build context from all searched files
+        # Build context summary from indexed chunks
         context_summary = "\n".join([
-            f"- {name}: {info.get('excerpt', '')[:200]}"
-            for name, info in searched_files.items()
+            f"[{i+1}] {chunk.get('file_name', '')}: {chunk.get('excerpt', '')[:100]}"
+            for i, chunk in enumerate(indexed_chunks)
         ])
 
         # Make final call WITHOUT tools to force synthesis
@@ -543,9 +493,10 @@ async def agentic_rag(
             "role": "user",
             "content": f"""Based on all the search results you've gathered, please provide your final answer now.
 
-Files searched: {list(searched_files.keys())}
+Available sources:
+{context_summary}
 
-Remember to cite sources using [filename] format. Synthesize the information you found."""
+Remember to cite sources using [1], [2], etc. format. Synthesize the information you found."""
         })
 
         try:
@@ -569,8 +520,8 @@ Remember to cite sources using [filename] format. Synthesize the information you
     for text in full_response:
         yield f'data: {json.dumps({"token": text})}\n\n'
 
-    # Extract citations from the response
-    citations = extract_citations_from_text(full_response, searched_files)
+    # Extract citations from the response (works like chat mode)
+    citations = extract_citations_from_text(full_response, indexed_chunks)
 
     # Store assistant message
     assistant_msg = Message(
@@ -583,4 +534,4 @@ Remember to cite sources using [filename] format. Synthesize the information you
     await db.commit()  # Explicit commit for streaming response
 
     # Send final message with metadata
-    yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": list(searched_files.keys()), "conversation_id": str(conversation.id), "iterations": iteration})}\n\n'
+    yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": searched_file_names, "conversation_id": str(conversation.id), "iterations": iteration})}\n\n'
