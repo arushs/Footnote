@@ -13,6 +13,7 @@ from typing import AsyncGenerator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.db_models import Chunk, Conversation, File, Message, Session
 from app.services.agent_tools import ALL_TOOLS
 from app.services.anthropic import get_client
@@ -190,7 +191,7 @@ async def execute_tool(
         logger.info(f"[AGENT] Rewriting query: '{tool_input.get('original_query', '')}' with feedback: '{tool_input.get('feedback', '')}'")
         client = get_client()
         rewrite_response = await client.messages.create(
-            model="claude-haiku-4-20250514",
+            model=settings.claude_fast_model,
             max_tokens=200,
             messages=[{
                 "role": "user",
@@ -398,7 +399,7 @@ async def agentic_rag(
         # Non-streaming call for tool use
         logger.info(f"[AGENT] Calling Claude API (iteration {iteration})")
         response = await client.messages.create(
-            model="claude-opus-4-5-20250514",
+            model=settings.claude_model,
             max_tokens=4096,
             system=AGENT_SYSTEM_PROMPT,
             tools=ALL_TOOLS,
@@ -482,7 +483,7 @@ Remember to cite sources using [filename] format. Synthesize the information you
 
         try:
             synthesis_response = await client.messages.create(
-                model="claude-opus-4-5-20250514",
+                model=settings.claude_model,
                 max_tokens=4096,
                 system=AGENT_SYSTEM_PROMPT,
                 messages=synthesis_messages,

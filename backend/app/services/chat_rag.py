@@ -14,6 +14,7 @@ from typing import AsyncGenerator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.db_models import Conversation, Message
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_retrieve_and_rerank
@@ -150,7 +151,7 @@ async def standard_rag(
 
     try:
         async with client.messages.stream(
-            model="claude-sonnet-4-20250514",
+            model=settings.claude_model,
             max_tokens=4096,
             system=system_prompt,
             messages=messages,

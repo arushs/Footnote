@@ -31,7 +31,7 @@ def get_client() -> AsyncAnthropic:
 async def generate_stream(
     messages: list[dict],
     system_prompt: str | None = None,
-    model: str = "claude-sonnet-4-20250514",
+    model: str | None = None,
     max_tokens: int = 4096,
 ) -> AsyncIterator[str]:
     """
@@ -48,7 +48,7 @@ async def generate_stream(
     """
     client = get_client()
     async with client.messages.stream(
-        model=model,
+        model=model or settings.claude_model,
         max_tokens=max_tokens,
         messages=messages,
         system=system_prompt or "",

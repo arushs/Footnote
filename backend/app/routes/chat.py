@@ -267,7 +267,7 @@ async def generate_streaming_response(
 
     try:
         async with client.messages.stream(
-            model="claude-sonnet-4-20250514",
+            model="claude-opus-4-5-20250514",
             max_tokens=4096,
             system=system_prompt,
             messages=messages,
