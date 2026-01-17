@@ -13,6 +13,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.services.anthropic import get_client
 
@@ -267,7 +268,7 @@ async def generate_streaming_response(
 
     try:
         async with client.messages.stream(
-            model="claude-opus-4-5-20250514",
+            model=settings.claude_model,
             max_tokens=4096,
             system=system_prompt,
             messages=messages,
