@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     mistral_api_key: str = ""
 
     # AI Models
-    claude_model: str = "claude-opus-4-5-20250514"  # Main generation model
-    claude_fast_model: str = "claude-haiku-4-20250514"  # Fast/cheap model for simple tasks
+    claude_model: str = "claude-sonnet-4-5-20250929"  # Main generation model
+    claude_fast_model: str = "claude-haiku-4-5-20251001"  # Fast/cheap model for simple tasks
 
     # Security
     secret_key: str = "dev-secret-key-change-in-production"

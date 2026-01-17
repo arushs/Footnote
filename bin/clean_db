@@ -1,0 +1,5 @@
+#!/bin/bash
+# Clean database tables for local testing
+# Usage: ./bin/clean_db [--all] [--dry-run]
+
+cd "$(dirname "$0")/../backend" && uv run python clean_db.py "$@"
