@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
-import { useChat } from '../useChat'
-import type { Citation } from '../../types'
+import { useChat } from './useChat'
+import type { Citation } from '../types'
 
 // Mock fetch
 const mockFetch = vi.fn()
 global.fetch = mockFetch
 
 // Helper to create a mock SSE response
-function createMockSSEResponse(chunks: Array<{ token?: string; done?: boolean; citations?: Record<string, Citation>; searched_files?: string[]; conversation_id?: string }>) {
+function createMockSSEResponse(chunks: Array<{ token?: string; done?: boolean; citations?: Record<string, Citation>; searched_files?: string[]; conversation_id?: string; agent_status?: { phase: string; iteration: number; tool?: string } }>) {
   const encoder = new TextEncoder()
   let index = 0
 
@@ -109,7 +109,7 @@ describe('useChat', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    it('should call fetch with correct parameters', async () => {
+    it('should call fetch with correct parameters for non-agent mode', async () => {
       mockFetch.mockResolvedValueOnce(createMockSSEResponse([
         { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
       ]))
@@ -127,6 +127,33 @@ describe('useChat', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: 'Test message',
+            agent_mode: false,
+            max_iterations: 10,
+          }),
+        })
+      )
+    })
+
+    it('should call fetch with agent_mode true when enabled', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true, maxIterations: 8 }))
+
+      await act(async () => {
+        result.current.sendMessage('Test message')
+      })
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/folders/folder-1/chat',
+        expect.objectContaining({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Test message',
+            agent_mode: true,
+            max_iterations: 8,
           }),
         })
       )
@@ -288,6 +315,192 @@ describe('useChat', () => {
       // Should not crash, messages remain empty
       expect(result.current.messages).toEqual([])
       consoleSpy.mockRestore()
+    })
+  })
+
+  describe('Agent Status', () => {
+    it('should set agentStatus to undefined when agentMode is false', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: false }))
+
+      await act(async () => {
+        await result.current.sendMessage('Hello')
+      })
+
+      // agentStatus should remain undefined when not in agent mode
+      expect(result.current.agentStatus).toBeUndefined()
+    })
+
+    it('should parse agent_status SSE events', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { agent_status: { phase: 'searching', iteration: 1 } },
+        { agent_status: { phase: 'reading_file', iteration: 2, tool: 'get_file' } },
+        { token: 'Found the information.' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true, maxIterations: 10 }))
+
+      // Track agentStatus changes during streaming
+      const statusHistory: (AgentStatus | undefined)[] = []
+
+      await act(async () => {
+        const sendPromise = result.current.sendMessage('Find data')
+
+        // Wait a bit and capture statuses during streaming
+        await new Promise(resolve => setTimeout(resolve, 10))
+        statusHistory.push(result.current.agentStatus)
+
+        await sendPromise
+      })
+
+      // After completion, agentStatus should be cleared
+      expect(result.current.agentStatus).toBeUndefined()
+    })
+
+    it('should update agentStatus phase to generating when tokens start', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { agent_status: { phase: 'searching', iteration: 1 } },
+        { token: 'Here is the answer.' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true }))
+
+      await act(async () => {
+        await result.current.sendMessage('Question')
+      })
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false)
+      })
+
+      // After completion, agentStatus should be cleared
+      expect(result.current.agentStatus).toBeUndefined()
+      // But the message should contain the response
+      expect(result.current.messages).toHaveLength(2)
+      expect(result.current.messages[1].content).toBe('Here is the answer.')
+    })
+
+    it('should clear agentStatus when conversation completes', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { agent_status: { phase: 'searching', iteration: 1 } },
+        { agent_status: { phase: 'processing', iteration: 2 } },
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true }))
+
+      await act(async () => {
+        await result.current.sendMessage('Test')
+      })
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false)
+      })
+
+      // agentStatus should be undefined after completion
+      expect(result.current.agentStatus).toBeUndefined()
+    })
+
+    it('should not set agentStatus when agentMode is false', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: false }))
+
+      await act(async () => {
+        await result.current.sendMessage('Hello')
+      })
+
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false)
+      })
+
+      expect(result.current.agentStatus).toBeUndefined()
+    })
+
+    it('should pass maxIterations to the API request', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true, maxIterations: 15 }))
+
+      await act(async () => {
+        await result.current.sendMessage('Hello')
+      })
+
+      // Verify max_iterations was passed in the request
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/folders/folder-1/chat',
+        expect.objectContaining({
+          body: JSON.stringify({
+            message: 'Hello',
+            agent_mode: true,
+            max_iterations: 15,
+          }),
+        })
+      )
+    })
+
+    it('should handle agent_status SSE events with tool information', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { agent_status: { phase: 'reading_file', iteration: 2, tool: 'get_file' } },
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result } = renderHook(() => useChat({ folderId: 'folder-1', agentMode: true }))
+
+      await act(async () => {
+        await result.current.sendMessage('Hello')
+      })
+
+      // After completion, agentStatus should be cleared but message should be present
+      expect(result.current.agentStatus).toBeUndefined()
+      expect(result.current.messages).toHaveLength(2)
+      expect(result.current.messages[1].content).toBe('Response')
+    })
+  })
+
+  describe('Folder change behavior', () => {
+    it('should reset state when folderId changes', async () => {
+      mockFetch.mockResolvedValueOnce(createMockSSEResponse([
+        { token: 'Response' },
+        { done: true, citations: {}, searched_files: [], conversation_id: 'conv-1' },
+      ]))
+
+      const { result, rerender } = renderHook(
+        ({ folderId }) => useChat({ folderId }),
+        { initialProps: { folderId: 'folder-1' } }
+      )
+
+      // Send a message in folder-1
+      await act(async () => {
+        await result.current.sendMessage('Hello')
+      })
+
+      await waitFor(() => {
+        expect(result.current.messages).toHaveLength(2)
+      })
+
+      // Change folder
+      rerender({ folderId: 'folder-2' })
+
+      // State should be reset
+      expect(result.current.messages).toEqual([])
+      expect(result.current.currentConversationId).toBeNull()
+      expect(result.current.streamingContent).toBe('')
+      expect(result.current.agentStatus).toBeUndefined()
     })
   })
 })

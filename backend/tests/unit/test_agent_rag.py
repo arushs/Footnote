@@ -10,8 +10,8 @@ from app.services.agent_rag import (
     build_google_drive_url,
     extract_citations_from_text,
     execute_tool,
-    MAX_ITERATIONS,
-    AGENT_SYSTEM_PROMPT,
+    build_agent_system_prompt,
+    DEFAULT_MAX_ITERATIONS,
 )
 
 
@@ -223,30 +223,6 @@ class TestExecuteTool:
         assert "error" in parsed
 
     @pytest.mark.asyncio
-    async def test_execute_rewrite_query(self):
-        """Rewrite query tool should return rewritten query."""
-        mock_db = AsyncMock()
-        folder_id = uuid.uuid4()
-        searched_files = {}
-
-        with patch("app.services.agent_rag.get_client") as mock_get_client:
-            mock_client = MagicMock()
-            mock_response = MagicMock()
-            mock_response.content = [MagicMock(text="improved query")]
-            mock_client.messages.create = AsyncMock(return_value=mock_response)
-            mock_get_client.return_value = mock_client
-
-            result = await execute_tool(
-                "rewrite_query",
-                {"original_query": "bad query", "feedback": "too vague"},
-                folder_id,
-                mock_db,
-                searched_files,
-            )
-
-            assert result == "improved query"
-
-    @pytest.mark.asyncio
     async def test_execute_get_file_invalid_id(self):
         """Get file should return error for invalid UUID."""
         mock_db = AsyncMock()
@@ -293,6 +269,7 @@ class TestExecuteTool:
         """Get file should return file content when found."""
         mock_db = AsyncMock()
         mock_file = MagicMock()
+        mock_file.id = uuid.uuid4()
         mock_file.file_name = "test.pdf"
         mock_file.file_preview = "This is the content..."
         mock_file.mime_type = "application/pdf"
@@ -305,17 +282,43 @@ class TestExecuteTool:
         folder_id = uuid.uuid4()
         searched_files = {}
 
-        result = await execute_tool(
-            "get_file",
-            {"file_id": str(uuid.uuid4())},
-            folder_id,
-            mock_db,
-            searched_files,
-        )
+        # Mock get_user_session_for_folder, DriveService, and ExtractionService
+        mock_session = MagicMock()
+        mock_session.access_token = "test_token"
 
-        parsed = json.loads(result)
-        assert parsed["file_name"] == "test.pdf"
-        assert "content" in parsed
+        mock_document = MagicMock()
+        mock_block = MagicMock()
+        mock_block.text = "This is the extracted content..."
+        mock_document.blocks = [mock_block]
+
+        with patch("app.services.agent_rag.get_user_session_for_folder") as mock_get_session, \
+             patch("app.services.agent_rag.DriveService") as mock_drive_class, \
+             patch("app.services.agent_rag.ExtractionService") as mock_extraction_class:
+
+            mock_get_session.return_value = mock_session
+
+            mock_drive = MagicMock()
+            mock_drive.download_file = AsyncMock(return_value=b"pdf content")
+            mock_drive_class.return_value = mock_drive
+
+            mock_extraction = MagicMock()
+            mock_extraction.is_google_doc.return_value = False
+            mock_extraction.is_pdf.return_value = True
+            mock_extraction.extract_pdf = AsyncMock(return_value=mock_document)
+            mock_extraction_class.return_value = mock_extraction
+
+            result = await execute_tool(
+                "get_file",
+                {"file_id": str(uuid.uuid4())},
+                folder_id,
+                mock_db,
+                searched_files,
+            )
+
+            parsed = json.loads(result)
+            assert parsed["file_name"] == "test.pdf"
+            assert "content" in parsed
+            assert parsed["source"] == "google_drive"
 
     @pytest.mark.asyncio
     async def test_execute_unknown_tool(self):
@@ -341,16 +344,76 @@ class TestConstants:
     """Tests for module constants."""
 
     def test_max_iterations_is_reasonable(self):
-        """Max iterations should be small to avoid infinite loops."""
-        assert MAX_ITERATIONS > 0
-        assert MAX_ITERATIONS <= 5
+        """Max iterations should be reasonable to avoid infinite loops."""
+        assert DEFAULT_MAX_ITERATIONS > 0
+        assert DEFAULT_MAX_ITERATIONS <= 15
 
-    def test_system_prompt_mentions_tools(self):
+
+class TestBuildAgentSystemPrompt:
+    """Tests for dynamic system prompt generation."""
+
+    def test_includes_folder_name(self):
+        """System prompt should include folder name."""
+        prompt = build_agent_system_prompt(
+            folder_name="My Documents",
+            files_indexed=10,
+            files_total=15,
+            max_iterations=10,
+        )
+        assert "My Documents" in prompt
+
+    def test_includes_file_counts(self):
+        """System prompt should include file count information."""
+        prompt = build_agent_system_prompt(
+            folder_name="Test Folder",
+            files_indexed=5,
+            files_total=10,
+            max_iterations=10,
+        )
+        assert "5/10" in prompt or ("5" in prompt and "10" in prompt)
+
+    def test_includes_iteration_limit(self):
+        """System prompt should mention iteration limit."""
+        prompt = build_agent_system_prompt(
+            folder_name="Folder",
+            files_indexed=1,
+            files_total=1,
+            max_iterations=8,
+        )
+        assert "8" in prompt
+
+    def test_mentions_available_tools(self):
         """System prompt should mention available tools."""
-        prompt_lower = AGENT_SYSTEM_PROMPT.lower()
+        prompt = build_agent_system_prompt(
+            folder_name="Folder",
+            files_indexed=1,
+            files_total=1,
+            max_iterations=10,
+        )
+        prompt_lower = prompt.lower()
         assert "search_folder" in prompt_lower
-        assert "rewrite_query" in prompt_lower
         assert "get_file" in prompt_lower
+        assert "get_file_chunks" in prompt_lower
+
+    def test_does_not_mention_rewrite_query(self):
+        """System prompt should NOT mention removed rewrite_query tool."""
+        prompt = build_agent_system_prompt(
+            folder_name="Folder",
+            files_indexed=1,
+            files_total=1,
+            max_iterations=10,
+        )
+        assert "rewrite_query" not in prompt.lower()
+
+    def test_includes_search_quality_guidance(self):
+        """System prompt should include RRF score guidance."""
+        prompt = build_agent_system_prompt(
+            folder_name="Folder",
+            files_indexed=1,
+            files_total=1,
+            max_iterations=10,
+        )
+        assert "rrf" in prompt.lower() or "score" in prompt.lower()
 
 
 class TestAgenticRAGFlow:
