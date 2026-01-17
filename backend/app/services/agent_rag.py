@@ -13,14 +13,14 @@ from typing import AsyncGenerator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import Conversation, File, Message
+from app.models.db_models import Chunk, Conversation, File, Message
 from app.services.agent_tools import ALL_TOOLS
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
 
-MAX_ITERATIONS = 3
+DEFAULT_MAX_ITERATIONS = 10
 
 AGENT_SYSTEM_PROMPT = """You are a helpful assistant with access to the user's Google Drive folder documents.
 
@@ -195,6 +195,20 @@ Return ONLY the rewritten query, nothing else."""
         if not file:
             return json.dumps({"error": "File not found or access denied"})
 
+        # Fetch all chunks for the file to get full content
+        chunks_result = await db.execute(
+            select(Chunk)
+            .where(Chunk.file_id == file_id)
+            .order_by(Chunk.chunk_index)
+        )
+        chunks = chunks_result.scalars().all()
+
+        # Concatenate all chunk texts to get full document content
+        if chunks:
+            full_content = "\n\n".join(chunk.chunk_text for chunk in chunks)
+        else:
+            full_content = file.file_preview or "No content available"
+
         # Track file for citation extraction
         if file.file_name not in searched_files:
             searched_files[file.file_name] = {
@@ -205,10 +219,13 @@ Return ONLY the rewritten query, nothing else."""
                 "google_drive_url": build_google_drive_url(file.google_file_id),
             }
 
+        logger.info(f"[AGENT] get_file returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name}")
+
         return json.dumps({
             "file_name": file.file_name,
-            "content": file.file_preview or "No preview available",
+            "content": full_content,
             "mime_type": file.mime_type,
+            "num_chunks": len(chunks),
         })
 
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
@@ -219,6 +236,7 @@ async def agentic_rag(
     folder_id: uuid.UUID,
     conversation: Conversation,
     user_message: str,
+    max_iterations: int = DEFAULT_MAX_ITERATIONS,
 ) -> AsyncGenerator[str, None]:
     """
     Agentic RAG loop with tool use.
@@ -231,6 +249,7 @@ async def agentic_rag(
         folder_id: Folder to search within
         conversation: Conversation object for message storage
         user_message: User's query
+        max_iterations: Maximum number of tool-use iterations (default: 10)
 
     Yields:
         SSE-formatted chunks for streaming response
@@ -265,7 +284,7 @@ async def agentic_rag(
     response = None
 
     # Agent loop
-    while iteration < MAX_ITERATIONS:
+    while iteration < max_iterations:
         iteration += 1
         logger.info(f"Agent iteration {iteration} for query: {user_message[:50]}...")
 
@@ -336,10 +355,43 @@ async def agentic_rag(
     logger.info(f"[AGENT] Final response length: {len(full_response)} chars, iterations: {iteration}")
     logger.info(f"[AGENT] Searched files: {list(searched_files.keys())}")
 
-    # Add note if we hit max iterations
-    if iteration >= MAX_ITERATIONS and response and response.stop_reason == "tool_use":
-        logger.warning(f"[AGENT] Hit max iterations ({MAX_ITERATIONS}) with stop_reason still tool_use")
-        full_response += "\n\n*Note: I searched multiple times but found limited relevant information. The answer above is based on the best available results.*"
+    # If we hit max iterations with tool_use, force a final synthesis
+    if iteration >= max_iterations and response and response.stop_reason == "tool_use":
+        logger.warning(f"[AGENT] Hit max iterations ({max_iterations}) - forcing final synthesis")
+
+        # Build context from all searched files
+        context_summary = "\n".join([
+            f"- {name}: {info.get('excerpt', '')[:200]}"
+            for name, info in searched_files.items()
+        ])
+
+        # Make final call WITHOUT tools to force synthesis
+        synthesis_messages = messages.copy()
+        synthesis_messages.append({
+            "role": "user",
+            "content": f"""Based on all the search results you've gathered, please provide your final answer now.
+
+Files searched: {list(searched_files.keys())}
+
+Remember to cite sources using [filename] format. Synthesize the information you found."""
+        })
+
+        try:
+            synthesis_response = await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=4096,
+                system=AGENT_SYSTEM_PROMPT,
+                messages=synthesis_messages,
+                # No tools - forces text response
+            )
+            full_response = ""
+            for block in synthesis_response.content:
+                if hasattr(block, "text"):
+                    full_response += block.text
+            logger.info(f"[AGENT] Forced synthesis response: {len(full_response)} chars")
+        except Exception as e:
+            logger.error(f"[AGENT] Synthesis call failed: {e}")
+            full_response = "*I searched multiple times but couldn't complete the analysis. Please try rephrasing your question.*"
 
     # Stream the response to client
     for text in full_response:

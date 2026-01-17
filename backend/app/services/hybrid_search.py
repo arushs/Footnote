@@ -33,6 +33,19 @@ class HybridSearchResult:
     rerank_score: float | None = None
 
 
+def build_or_query(query: str) -> str:
+    """Convert a query string to OR-based tsquery format.
+
+    Splits on spaces and joins with OR for more forgiving matching.
+    """
+    # Split into words, filter out empty strings and common stop words
+    words = [w.strip() for w in query.split() if w.strip() and len(w.strip()) > 2]
+    if not words:
+        return query
+    # Join with OR for more forgiving matching
+    return " OR ".join(words)
+
+
 async def keyword_search(
     db: AsyncSession,
     query: str,
@@ -51,20 +64,24 @@ async def keyword_search(
     Returns:
         List of (chunk_id, rank) tuples ordered by relevance
     """
+    # Convert query to OR-based format for more forgiving matching
+    or_query = build_or_query(query)
+    logger.info(f"[HYBRID] Keyword query: '{or_query[:50]}...'")
+
     result = await db.execute(
         text("""
             SELECT
                 c.id as chunk_id,
-                ROW_NUMBER() OVER (ORDER BY ts_rank(c.search_vector, plainto_tsquery('english', :query)) DESC) as rank
+                ROW_NUMBER() OVER (ORDER BY ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) DESC) as rank
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
-              AND c.search_vector @@ plainto_tsquery('english', :query)
-            ORDER BY ts_rank(c.search_vector, plainto_tsquery('english', :query)) DESC
+              AND c.search_vector @@ websearch_to_tsquery('english', :query)
+            ORDER BY ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) DESC
             LIMIT :top_k
         """),
         {
-            "query": query,
+            "query": or_query,
             "folder_id": str(folder_id),
             "top_k": top_k,
         },

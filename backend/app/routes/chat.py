@@ -43,6 +43,7 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
     agent_mode: bool = False  # Enable agent mode for iterative search
+    max_iterations: int = 10  # Max tool-use iterations for agent mode
 
 
 class CitationData(BaseModel):
@@ -372,15 +373,16 @@ async def chat(
         await db.flush()
 
     # Route to appropriate mode based on agent_mode flag
-    logger.info(f"[CHAT] Chat request - agent_mode: {request.agent_mode}, message: {request.message[:50]}...")
+    logger.info(f"[CHAT] Chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}...")
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
-        logger.info("[CHAT] Using AGENT mode")
+        logger.info(f"[CHAT] Using AGENT mode (max_iterations: {request.max_iterations})")
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder_uuid,
             conversation=conversation,
             user_message=request.message,
+            max_iterations=request.max_iterations,
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)
@@ -742,15 +744,16 @@ async def chat_in_conversation(
     )
 
     # Route to appropriate mode based on agent_mode flag
-    logger.info(f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, message: {request.message[:50]}...")
+    logger.info(f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}...")
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
-        logger.info("[CHAT] Using AGENT mode (conversation)")
+        logger.info(f"[CHAT] Using AGENT mode (conversation, max_iterations: {request.max_iterations})")
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder.id,
             conversation=conversation,
             user_message=request.message,
+            max_iterations=request.max_iterations,
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)

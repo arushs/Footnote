@@ -53,14 +53,15 @@ Provide feedback about what was wrong with the results to guide the rewrite.""",
 
 GET_FILE_TOOL = {
     "name": "get_file",
-    "description": """Retrieve the full content of a specific file when chunks don't provide enough context.
+    "description": """Retrieve the FULL indexed content of a specific file by fetching all its chunks.
 
 Use this tool when:
-- You need to see the complete document structure
+- You need to see the complete document content
 - Chunk excerpts are insufficient to answer the question
+- You need to understand the full context or structure of a document
 - You need to compare information across sections of the same document
 
-Note: Large files may be truncated. The full file preview (first ~2000 chars) will be returned.""",
+Returns: Complete document text (all chunks concatenated) along with metadata.""",
     "input_schema": {
         "type": "object",
         "properties": {
