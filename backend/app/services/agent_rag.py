@@ -51,7 +51,15 @@ def build_agent_system_prompt(
 3. If results are poor or incomplete, try a different search query with alternative terms
 4. Use get_file_chunks when you need more context from a file (fast, uses indexed content)
 5. Use get_file only when you need the absolute original content from Drive (slower)
-6. Generate your response with inline citations [filename]
+6. Generate your response with numbered inline citations [1], [2], etc.
+
+## Citation Format (IMPORTANT)
+- Use numbered citations like [1], [2], [3] inline in your response
+- At the END of your response, include a Sources section mapping numbers to filenames:
+
+Sources:
+[1] filename1.pdf
+[2] filename2.docx
 
 ## Search Quality Guidance
 - RRF score > 0.5: Results are likely relevant, consider synthesizing
@@ -62,7 +70,7 @@ def build_agent_system_prompt(
 ## Guidelines
 - Be thorough but efficient - don't over-search if you have good results
 - Prefer get_file_chunks over get_file unless you specifically need fresh content
-- Cite your sources using [filename] format
+- Always include numbered citations and a Sources section at the end
 - If approaching your iteration limit, synthesize what you've found
 - If you can't find relevant information after trying, say so honestly"""
 
@@ -116,24 +124,73 @@ async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) ->
 
 
 def extract_citations_from_text(text: str, searched_files: dict) -> dict:
-    """Extract [filename] citations from agent response."""
+    """Extract numbered citations from agent response.
+
+    Expects format like:
+    - Inline: [1], [2], [3]
+    - Sources section at end:
+      Sources:
+      [1] filename1.pdf
+      [2] filename2.docx
+    """
     citations = {}
-    # Match [filename] pattern - capture text between brackets
-    pattern = r"\[([^\]]+)\]"
-    matches = re.findall(pattern, text)
 
-    for i, match in enumerate(matches, 1):
-        # Check if this looks like a filename (not a number citation)
-        if not match.isdigit() and match in searched_files:
-            file_info = searched_files[match]
-            citations[str(i)] = {
-                "chunk_id": str(file_info.get("chunk_id", "")),
-                "file_name": match,
-                "location": file_info.get("location", "Document"),
-                "excerpt": file_info.get("excerpt", ""),
-                "google_drive_url": file_info.get("google_drive_url", ""),
-            }
+    # Look for Sources section at the end
+    sources_match = re.search(r"Sources?:\s*\n((?:\[\d+\][^\n]+\n?)+)", text, re.IGNORECASE)
 
+    if sources_match:
+        sources_text = sources_match.group(1)
+        # Parse [number] filename lines
+        source_pattern = r"\[(\d+)\]\s*(.+)"
+        for match in re.finditer(source_pattern, sources_text):
+            num = match.group(1)
+            filename = match.group(2).strip()
+
+            # Find the file in searched_files (partial match)
+            file_info = None
+            for searched_name, info in searched_files.items():
+                if filename in searched_name or searched_name in filename:
+                    file_info = info
+                    filename = searched_name  # Use the full name
+                    break
+
+            if file_info:
+                citations[num] = {
+                    "chunk_id": str(file_info.get("chunk_id", "")),
+                    "file_name": filename,
+                    "location": file_info.get("location", "Document"),
+                    "excerpt": file_info.get("excerpt", ""),
+                    "google_drive_url": file_info.get("google_drive_url", ""),
+                }
+                logger.info(f"[AGENT] Mapped citation [{num}] -> {filename}")
+            else:
+                # Still create a citation even if not in searched_files
+                citations[num] = {
+                    "chunk_id": "",
+                    "file_name": filename,
+                    "location": "Document",
+                    "excerpt": "",
+                    "google_drive_url": "",
+                }
+                logger.info(f"[AGENT] Citation [{num}] -> {filename} (not in searched_files)")
+    else:
+        # Fallback: try to match [filename] directly (old format)
+        pattern = r"\[([^\]]+)\]"
+        matches = re.findall(pattern, text)
+
+        for i, match in enumerate(matches, 1):
+            if not match.isdigit() and match in searched_files:
+                file_info = searched_files[match]
+                citations[str(i)] = {
+                    "chunk_id": str(file_info.get("chunk_id", "")),
+                    "file_name": match,
+                    "location": file_info.get("location", "Document"),
+                    "excerpt": file_info.get("excerpt", ""),
+                    "google_drive_url": file_info.get("google_drive_url", ""),
+                }
+                logger.info(f"[AGENT] Fallback matched: [{match}]")
+
+    logger.info(f"[AGENT] Final citations count: {len(citations)}")
     return citations
 
 
