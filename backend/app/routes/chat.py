@@ -1,6 +1,7 @@
 """Chat endpoint with RAG-based answer generation and citations."""
 
 import json
+import logging
 import re
 import uuid
 from typing import AsyncGenerator
@@ -14,6 +15,8 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.services.anthropic import get_client
+
+logger = logging.getLogger(__name__)
 from app.models.db_models import (
     Folder,
     File,
@@ -369,8 +372,10 @@ async def chat(
         await db.flush()
 
     # Route to appropriate mode based on agent_mode flag
+    logger.info(f"[CHAT] Chat request - agent_mode: {request.agent_mode}, message: {request.message[:50]}...")
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
+        logger.info("[CHAT] Using AGENT mode")
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder_uuid,
@@ -379,6 +384,7 @@ async def chat(
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)
+        logger.info("[CHAT] Using STANDARD mode")
         rag_generator = standard_rag(
             db=db,
             folder_id=folder_uuid,
@@ -736,8 +742,10 @@ async def chat_in_conversation(
     )
 
     # Route to appropriate mode based on agent_mode flag
+    logger.info(f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, message: {request.message[:50]}...")
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
+        logger.info("[CHAT] Using AGENT mode (conversation)")
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder.id,
@@ -746,6 +754,7 @@ async def chat_in_conversation(
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)
+        logger.info("[CHAT] Using STANDARD mode (conversation)")
         rag_generator = standard_rag(
             db=db,
             folder_id=folder.id,
