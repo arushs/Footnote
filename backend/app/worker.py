@@ -168,7 +168,11 @@ async def process_job(job: IndexingJob) -> None:
         pdf_content = await drive.download_file(file_info.google_file_id)
         document = await extraction.extract_pdf(pdf_content)
     else:
-        raise ValueError(f"Unsupported file type: {file_info.mime_type}")
+        # Skip unsupported file types (images, etc.) gracefully
+        logger.info(f"Skipping unsupported file type: {file_info.file_name} ({file_info.mime_type})")
+        await mark_job_completed(job)
+        await update_file_status(job.file_id, "skipped")
+        return
 
     if not document.blocks:
         logger.warning(f"No content extracted from {file_info.file_name}")

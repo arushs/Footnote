@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.db_models import Chunk, File, Folder, IndexingJob
+from app.services.extraction import ExtractionService
 
 logger = logging.getLogger(__name__)
 
@@ -171,13 +172,18 @@ async def _list_drive_folder_async(loop, service, folder_id: str) -> list[dict]:
 
 async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
     """Apply diff changes to database and queue re-indexing."""
+    extraction = ExtractionService()
 
     # Delete removed files (cascade handles chunks via FK)
     for file in changes["deleted"]:
         await db.delete(file)
 
-    # Queue new files for indexing
+    # Queue new files for indexing (skip unsupported types like images)
     for drive_file in changes["added"]:
+        mime_type = drive_file["mimeType"]
+        if not extraction.is_supported(mime_type):
+            logger.debug(f"Skipping unsupported file type: {drive_file['name']} ({mime_type})")
+            continue
         new_file = File(
             folder_id=folder.id,
             google_file_id=drive_file["id"],
