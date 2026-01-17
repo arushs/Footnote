@@ -36,6 +36,14 @@ export interface Folder {
   files_indexed: number
 }
 
+// Agent Status (for agent mode progress)
+export interface AgentStatus {
+  phase: 'searching' | 'rewriting' | 'reading_file' | 'processing' | 'generating'
+  iteration: number
+  maxIterations: number
+  tool?: string
+}
+
 // Chat State
 export interface ChatState {
   messages: Message[]
@@ -43,6 +51,7 @@ export interface ChatState {
   currentConversationId: string | null
   streamingContent: string
   streamingCitations: Record<string, Citation>
+  agentStatus?: AgentStatus
 }
 
 export interface SourcesState {

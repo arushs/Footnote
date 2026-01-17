@@ -1,4 +1,4 @@
-import { MessageCircle, Search, Sparkles } from 'lucide-react'
+import { MessageCircle, Sparkles } from 'lucide-react'
 import * as ScrollArea from '@radix-ui/react-scroll-area'
 import { ChatMessage } from './ChatMessage'
 import { StreamingMessage } from './StreamingMessage'
