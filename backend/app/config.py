@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     mistral_api_key: str = ""
 
+    # AI Models
+    claude_model: str = "claude-opus-4-5-20250514"  # Main generation model
+    claude_fast_model: str = "claude-haiku-4-20250514"  # Fast/cheap model for simple tasks
+
     # Security
     secret_key: str = "dev-secret-key-change-in-production"
     session_expire_hours: int = 24
