@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db_models import Conversation, File, Message
 from app.services.agent_tools import ALL_TOOLS
 from app.services.anthropic import get_client
-from app.services.embedding import embed_query
 from app.services.hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
@@ -103,13 +102,17 @@ async def execute_tool(
         if not query or not query.strip():
             return json.dumps({"error": "Empty query provided", "chunks": []})
 
-        query_embedding = await embed_query(query)
-        results = await hybrid_search(
-            db=db,
-            query=query,
-            folder_id=folder_id,
-            top_k=15,
-        )
+        try:
+            # hybrid_search already calls embed_query internally
+            results = await hybrid_search(
+                db=db,
+                query=query,
+                folder_id=folder_id,
+                top_k=15,
+            )
+        except Exception as e:
+            logger.error(f"Search failed: {e}")
+            return json.dumps({"error": f"Search failed: {str(e)}", "chunks": []})
 
         chunks_data = []
         for r in results[:10]:

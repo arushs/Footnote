@@ -132,10 +132,8 @@ class TestExecuteTool:
         folder_id = uuid.uuid4()
         searched_files = {}
 
-        # Mock hybrid search
-        with patch("app.services.agent_rag.embed_query") as mock_embed, \
-             patch("app.services.agent_rag.hybrid_search") as mock_search:
-            mock_embed.return_value = [0.1] * 768
+        # Only mock hybrid_search - it handles embed_query internally
+        with patch("app.services.agent_rag.hybrid_search") as mock_search:
             mock_search.return_value = []
 
             result = await execute_tool(
@@ -149,6 +147,62 @@ class TestExecuteTool:
             parsed = json.loads(result)
             assert "chunks" in parsed
             assert isinstance(parsed["chunks"], list)
+
+    @pytest.mark.asyncio
+    async def test_execute_search_folder_does_not_call_embed_query_directly(self):
+        """REGRESSION: execute_tool should NOT call embed_query directly.
+
+        hybrid_search handles embedding internally. Calling embed_query twice
+        caused timeout issues (the original bug this test prevents).
+        """
+        mock_db = AsyncMock()
+        folder_id = uuid.uuid4()
+        searched_files = {}
+
+        with patch("app.services.agent_rag.hybrid_search") as mock_search:
+            mock_search.return_value = []
+
+            # Verify embed_query is not imported in agent_rag
+            import app.services.agent_rag as agent_rag_module
+            assert not hasattr(agent_rag_module, 'embed_query'), \
+                "embed_query should not be imported in agent_rag - hybrid_search handles it"
+
+            await execute_tool(
+                "search_folder",
+                {"query": "test query"},
+                folder_id,
+                mock_db,
+                searched_files,
+            )
+
+            # Verify hybrid_search was called with the query string (not an embedding)
+            mock_search.assert_called_once()
+            call_kwargs = mock_search.call_args.kwargs
+            assert call_kwargs["query"] == "test query"
+            assert call_kwargs["folder_id"] == folder_id
+
+    @pytest.mark.asyncio
+    async def test_execute_search_folder_handles_search_errors(self):
+        """Should return error JSON when hybrid_search fails."""
+        mock_db = AsyncMock()
+        folder_id = uuid.uuid4()
+        searched_files = {}
+
+        with patch("app.services.agent_rag.hybrid_search") as mock_search:
+            mock_search.side_effect = Exception("Connection timeout")
+
+            result = await execute_tool(
+                "search_folder",
+                {"query": "test query"},
+                folder_id,
+                mock_db,
+                searched_files,
+            )
+
+            parsed = json.loads(result)
+            assert "error" in parsed
+            assert "Search failed" in parsed["error"]
+            assert "Connection timeout" in parsed["error"]
 
     @pytest.mark.asyncio
     async def test_execute_search_folder_empty_query(self):
@@ -356,11 +410,10 @@ class TestAgenticRAGFlow:
         mock_db.add = MagicMock()
         mock_db.flush = AsyncMock()
 
+        # Only mock hybrid_search - embed_query is handled internally
         with patch("app.services.agent_rag.get_client") as mock_get_client, \
-             patch("app.services.agent_rag.embed_query") as mock_embed, \
              patch("app.services.agent_rag.hybrid_search") as mock_search:
 
-            mock_embed.return_value = [0.1] * 768
             mock_search.return_value = []
 
             mock_client = MagicMock()
