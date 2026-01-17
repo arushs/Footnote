@@ -4,7 +4,7 @@ import pytest
 
 from app.services.agent_tools import (
     SEARCH_FOLDER_TOOL,
-    REWRITE_QUERY_TOOL,
+    GET_FILE_CHUNKS_TOOL,
     GET_FILE_TOOL,
     ALL_TOOLS,
 )
@@ -41,37 +41,46 @@ class TestSearchFolderTool:
         schema = SEARCH_FOLDER_TOOL["input_schema"]
         assert schema["properties"]["query"]["type"] == "string"
 
+    def test_description_includes_query_refinement_guidance(self):
+        """Description should guide agent on query refinement."""
+        desc = SEARCH_FOLDER_TOOL["description"].lower()
+        # Should mention trying different terms when results are poor
+        assert "different" in desc or "synonym" in desc or "alternative" in desc
 
-class TestRewriteQueryTool:
-    """Tests for the rewrite_query tool definition."""
+
+class TestGetFileChunksTool:
+    """Tests for the get_file_chunks tool definition."""
 
     def test_tool_has_required_fields(self):
         """Tool should have name, description, and input_schema."""
-        assert "name" in REWRITE_QUERY_TOOL
-        assert "description" in REWRITE_QUERY_TOOL
-        assert "input_schema" in REWRITE_QUERY_TOOL
+        assert "name" in GET_FILE_CHUNKS_TOOL
+        assert "description" in GET_FILE_CHUNKS_TOOL
+        assert "input_schema" in GET_FILE_CHUNKS_TOOL
 
-    def test_tool_name_is_rewrite_query(self):
-        """Tool name should be rewrite_query."""
-        assert REWRITE_QUERY_TOOL["name"] == "rewrite_query"
+    def test_tool_name_is_get_file_chunks(self):
+        """Tool name should be get_file_chunks."""
+        assert GET_FILE_CHUNKS_TOOL["name"] == "get_file_chunks"
 
-    def test_tool_requires_original_query(self):
-        """Tool should require original_query parameter."""
-        schema = REWRITE_QUERY_TOOL["input_schema"]
-        assert "original_query" in schema["properties"]
-        assert "original_query" in schema["required"]
+    def test_tool_requires_file_id(self):
+        """Tool should require file_id parameter."""
+        schema = GET_FILE_CHUNKS_TOOL["input_schema"]
+        assert "file_id" in schema["properties"]
+        assert "file_id" in schema["required"]
 
-    def test_tool_requires_feedback(self):
-        """Tool should require feedback parameter."""
-        schema = REWRITE_QUERY_TOOL["input_schema"]
-        assert "feedback" in schema["properties"]
-        assert "feedback" in schema["required"]
+    def test_file_id_is_string(self):
+        """File ID parameter should be a string."""
+        schema = GET_FILE_CHUNKS_TOOL["input_schema"]
+        assert schema["properties"]["file_id"]["type"] == "string"
 
-    def test_both_parameters_are_strings(self):
-        """Both parameters should be strings."""
-        schema = REWRITE_QUERY_TOOL["input_schema"]
-        assert schema["properties"]["original_query"]["type"] == "string"
-        assert schema["properties"]["feedback"]["type"] == "string"
+    def test_description_mentions_fast_access(self):
+        """Description should mention this is the fast option."""
+        desc = GET_FILE_CHUNKS_TOOL["description"].lower()
+        assert "fast" in desc
+
+    def test_description_mentions_indexed_content(self):
+        """Description should mention indexed/chunked content."""
+        desc = GET_FILE_CHUNKS_TOOL["description"].lower()
+        assert "indexed" in desc or "chunk" in desc
 
 
 class TestGetFileTool:
@@ -98,10 +107,15 @@ class TestGetFileTool:
         schema = GET_FILE_TOOL["input_schema"]
         assert schema["properties"]["file_id"]["type"] == "string"
 
-    def test_description_mentions_uuid(self):
-        """Description should mention UUID."""
+    def test_description_mentions_slower(self):
+        """Description should mention this is slower."""
         desc = GET_FILE_TOOL["description"].lower()
-        assert "uuid" in desc
+        assert "slow" in desc
+
+    def test_description_mentions_google_drive(self):
+        """Description should mention Google Drive."""
+        desc = GET_FILE_TOOL["description"].lower()
+        assert "google" in desc or "drive" in desc
 
 
 class TestAllTools:
@@ -116,15 +130,20 @@ class TestAllTools:
         tool_names = [t["name"] for t in ALL_TOOLS]
         assert "search_folder" in tool_names
 
-    def test_all_tools_contains_rewrite_query(self):
-        """ALL_TOOLS should include rewrite_query."""
+    def test_all_tools_contains_get_file_chunks(self):
+        """ALL_TOOLS should include get_file_chunks."""
         tool_names = [t["name"] for t in ALL_TOOLS]
-        assert "rewrite_query" in tool_names
+        assert "get_file_chunks" in tool_names
 
     def test_all_tools_contains_get_file(self):
         """ALL_TOOLS should include get_file."""
         tool_names = [t["name"] for t in ALL_TOOLS]
         assert "get_file" in tool_names
+
+    def test_all_tools_does_not_contain_rewrite_query(self):
+        """ALL_TOOLS should NOT include removed rewrite_query tool."""
+        tool_names = [t["name"] for t in ALL_TOOLS]
+        assert "rewrite_query" not in tool_names
 
     def test_all_tools_valid_json_schema(self):
         """All tools should have valid JSON schema format."""
