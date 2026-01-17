@@ -51,17 +51,40 @@ Provide feedback about what was wrong with the results to guide the rewrite.""",
     },
 }
 
-GET_FILE_TOOL = {
-    "name": "get_file",
-    "description": """Retrieve the FULL indexed content of a specific file by fetching all its chunks.
+GET_FILE_CHUNKS_TOOL = {
+    "name": "get_file_chunks",
+    "description": """Retrieve the indexed content of a specific file by fetching all its pre-processed chunks.
 
 Use this tool when:
-- You need to see the complete document content
-- Chunk excerpts are insufficient to answer the question
-- You need to understand the full context or structure of a document
-- You need to compare information across sections of the same document
+- You need to see more context from a file found in search results
+- You want fast access to the indexed/chunked version of a document
+- The search result excerpts are insufficient
 
-Returns: Complete document text (all chunks concatenated) along with metadata.""",
+This is FAST because it uses pre-indexed content. Returns all chunks concatenated.""",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "file_id": {
+                "type": "string",
+                "description": "The UUID of the file to retrieve (from search results)",
+            }
+        },
+        "required": ["file_id"],
+    },
+}
+
+GET_FILE_TOOL = {
+    "name": "get_file",
+    "description": """Download and extract the FULL raw content of a file directly from Google Drive.
+
+Use this tool when:
+- You need the complete, unprocessed document content
+- The indexed chunks may have missed something
+- You need to verify or cross-reference against the original source
+- You need content that wasn't captured during indexing
+
+This is SLOWER because it downloads fresh from Google Drive and extracts text.
+Works with Google Docs and PDFs.""",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -75,4 +98,4 @@ Returns: Complete document text (all chunks concatenated) along with metadata.""
 }
 
 # All tools available to the agent
-ALL_TOOLS = [SEARCH_FOLDER_TOOL, REWRITE_QUERY_TOOL, GET_FILE_TOOL]
+ALL_TOOLS = [SEARCH_FOLDER_TOOL, REWRITE_QUERY_TOOL, GET_FILE_CHUNKS_TOOL, GET_FILE_TOOL]

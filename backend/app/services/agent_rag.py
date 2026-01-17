@@ -13,9 +13,11 @@ from typing import AsyncGenerator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.db_models import Chunk, Conversation, File, Message
+from app.models.db_models import Chunk, Conversation, File, Message, Session
 from app.services.agent_tools import ALL_TOOLS
 from app.services.anthropic import get_client
+from app.services.drive import DriveService
+from app.services.extraction import ExtractionService
 from app.services.hybrid_search import hybrid_search
 
 logger = logging.getLogger(__name__)
@@ -25,22 +27,24 @@ DEFAULT_MAX_ITERATIONS = 10
 AGENT_SYSTEM_PROMPT = """You are a helpful assistant with access to the user's Google Drive folder documents.
 
 ## Your Tools
-- **search_folder**: Search for relevant information using hybrid search
+- **search_folder**: Search for relevant information using hybrid search (semantic + keyword)
 - **rewrite_query**: Reformulate queries when search results are poor
-- **get_file**: Retrieve full document content when needed
+- **get_file_chunks**: Fast - retrieve all indexed chunks for a file (pre-processed content)
+- **get_file**: Slower - download fresh content directly from Google Drive
 
 ## Workflow
 1. When the user asks a question, use search_folder to find relevant information
 2. Evaluate if the results are sufficient (look at relevance scores and content)
-3. If results are poor, use rewrite_query and search again (max 3 total searches)
-4. Use get_file only when you need broader context from a specific document
-5. Generate your response with inline citations [filename]
+3. If results are poor, use rewrite_query and search again
+4. Use get_file_chunks when you need more context from a file (fast, uses indexed content)
+5. Use get_file only when you need the absolute original content from Drive (slower)
+6. Generate your response with inline citations [filename]
 
 ## Guidelines
 - Be thorough but efficient - don't over-search if you have good results
+- Prefer get_file_chunks over get_file unless you specifically need fresh content
 - Cite your sources using [filename] format
-- If you can't find relevant information after trying, say so honestly
-- Maximum 3 search attempts before responding with best available information"""
+- If you can't find relevant information after trying, say so honestly"""
 
 
 def format_location(location: dict) -> str:
@@ -61,6 +65,34 @@ def format_location(location: dict) -> str:
 def build_google_drive_url(google_file_id: str) -> str:
     """Build a Google Drive URL for a file."""
     return f"https://drive.google.com/file/d/{google_file_id}/view"
+
+
+async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) -> Session | None:
+    """Get a valid user session for accessing files in a folder."""
+    from sqlalchemy import text
+
+    result = await db.execute(
+        text("""
+            SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
+            FROM sessions s
+            JOIN folders f ON f.user_id = s.user_id
+            WHERE f.id = :folder_id
+              AND s.expires_at > NOW()
+            ORDER BY s.expires_at DESC
+            LIMIT 1
+        """),
+        {"folder_id": str(folder_id)},
+    )
+    row = result.first()
+    if row:
+        return Session(
+            id=row.id,
+            user_id=row.user_id,
+            access_token=row.access_token,
+            refresh_token=row.refresh_token,
+            expires_at=row.expires_at,
+        )
+    return None
 
 
 def extract_citations_from_text(text: str, searched_files: dict) -> dict:
@@ -174,7 +206,8 @@ Return ONLY the rewritten query, nothing else."""
         logger.info(f"[AGENT] Rewritten query: '{rewritten}'")
         return rewritten
 
-    elif tool_name == "get_file":
+    elif tool_name == "get_file_chunks":
+        # Fast: Return pre-indexed chunks
         file_id_str = tool_input.get("file_id", "")
 
         # Validate UUID format
@@ -219,7 +252,7 @@ Return ONLY the rewritten query, nothing else."""
                 "google_drive_url": build_google_drive_url(file.google_file_id),
             }
 
-        logger.info(f"[AGENT] get_file returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name}")
+        logger.info(f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name}")
 
         return json.dumps({
             "file_name": file.file_name,
@@ -227,6 +260,77 @@ Return ONLY the rewritten query, nothing else."""
             "mime_type": file.mime_type,
             "num_chunks": len(chunks),
         })
+
+    elif tool_name == "get_file":
+        # Slower: Download fresh from Google Drive
+        file_id_str = tool_input.get("file_id", "")
+
+        # Validate UUID format
+        try:
+            file_id = uuid.UUID(file_id_str)
+        except (ValueError, TypeError):
+            return json.dumps({"error": "Invalid file ID format"})
+
+        # SECURITY: Verify file belongs to the folder (authorization check)
+        result = await db.execute(
+            select(File).where(
+                File.id == file_id,
+                File.folder_id == folder_id,  # Authorization check
+            )
+        )
+        file = result.scalar_one_or_none()
+
+        if not file:
+            return json.dumps({"error": "File not found or access denied"})
+
+        # Get user session for Google Drive access
+        session = await get_user_session_for_folder(db, folder_id)
+        if not session:
+            logger.error(f"[AGENT] No valid session found for folder {folder_id}")
+            return json.dumps({"error": "No valid session - please re-authenticate"})
+
+        try:
+            # Initialize services
+            drive = DriveService(session.access_token)
+            extraction = ExtractionService()
+
+            # Download and extract based on file type
+            if extraction.is_google_doc(file.mime_type):
+                logger.info(f"[AGENT] Exporting Google Doc: {file.file_name}")
+                html_content = await drive.export_google_doc(file.google_file_id)
+                document = await extraction.extract_google_doc(html_content)
+            elif extraction.is_pdf(file.mime_type):
+                logger.info(f"[AGENT] Downloading PDF: {file.file_name}")
+                pdf_content = await drive.download_file(file.google_file_id)
+                document = await extraction.extract_pdf(pdf_content)
+            else:
+                return json.dumps({"error": f"Unsupported file type: {file.mime_type}"})
+
+            # Combine all text blocks
+            full_content = "\n\n".join(block.text for block in document.blocks)
+
+            # Track file for citation extraction
+            if file.file_name not in searched_files:
+                searched_files[file.file_name] = {
+                    "chunk_id": "",
+                    "file_id": file.id,
+                    "location": "Full document",
+                    "excerpt": full_content[:200] if full_content else "",
+                    "google_drive_url": build_google_drive_url(file.google_file_id),
+                }
+
+            logger.info(f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name}")
+
+            return json.dumps({
+                "file_name": file.file_name,
+                "content": full_content,
+                "mime_type": file.mime_type,
+                "source": "google_drive",
+            })
+
+        except Exception as e:
+            logger.error(f"[AGENT] Failed to download file {file.file_name}: {e}")
+            return json.dumps({"error": f"Failed to download file: {str(e)}"})
 
     return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
@@ -294,7 +398,7 @@ async def agentic_rag(
         # Non-streaming call for tool use
         logger.info(f"[AGENT] Calling Claude API (iteration {iteration})")
         response = await client.messages.create(
-            model="claude-sonnet-4-20250514",
+            model="claude-opus-4-5-20250514",
             max_tokens=4096,
             system=AGENT_SYSTEM_PROMPT,
             tools=ALL_TOOLS,
@@ -378,7 +482,7 @@ Remember to cite sources using [filename] format. Synthesize the information you
 
         try:
             synthesis_response = await client.messages.create(
-                model="claude-sonnet-4-20250514",
+                model="claude-opus-4-5-20250514",
                 max_tokens=4096,
                 system=AGENT_SYSTEM_PROMPT,
                 messages=synthesis_messages,
