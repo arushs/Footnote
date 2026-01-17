@@ -1,4 +1,5 @@
 import { Bot } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 interface StreamingMessageProps {
   content: string
@@ -13,10 +14,8 @@ export function StreamingMessage({ content }: StreamingMessageProps) {
 
       <div className="flex-1 space-y-2 overflow-hidden">
         <div className="prose prose-sm max-w-none dark:prose-invert">
-          <p className="whitespace-pre-wrap">
-            {content}
-            <span className="inline-block w-2 h-4 ml-1 bg-foreground animate-pulse" />
-          </p>
+          <ReactMarkdown>{content}</ReactMarkdown>
+          <span className="inline-block w-2 h-4 ml-1 bg-foreground animate-pulse" />
         </div>
       </div>
     </div>

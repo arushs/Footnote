@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, ReactNode, Children, isValidElement, cloneElement } from 'react'
 import { Copy, Check, User, Bot, ChevronRight } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
+import ReactMarkdown from 'react-markdown'
 import type { Message, Citation } from '../../types'
 import { cn } from '../../lib/utils'
 
@@ -29,22 +30,20 @@ export function ChatMessage({
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // Parse content and render citation markers
-  const renderContent = () => {
+  // Process text to replace citation markers with clickable elements
+  const processCitations = (text: string): ReactNode[] => {
     if (!message.citations || Object.keys(message.citations).length === 0) {
-      return <p className="whitespace-pre-wrap">{message.content}</p>
+      return [text]
     }
 
-    // Find citation markers like [1], [2], etc. and replace with clickable elements
     const citationPattern = /\[(\d+)\]/g
-    const parts: (string | JSX.Element)[] = []
+    const parts: ReactNode[] = []
     let lastIndex = 0
     let match
 
-    while ((match = citationPattern.exec(message.content)) !== null) {
-      // Add text before the citation
+    while ((match = citationPattern.exec(text)) !== null) {
       if (match.index > lastIndex) {
-        parts.push(message.content.slice(lastIndex, match.index))
+        parts.push(text.slice(lastIndex, match.index))
       }
 
       const citationKey = match[1]
@@ -53,7 +52,7 @@ export function ChatMessage({
       if (citation) {
         parts.push(
           <CitationMarker
-            key={`${match.index}-${citationKey}`}
+            key={`citation-${match.index}-${citationKey}`}
             citation={citation}
             onClick={() => onCitationClick?.(citation)}
           />
@@ -65,12 +64,52 @@ export function ChatMessage({
       lastIndex = match.index + match[0].length
     }
 
-    // Add remaining text
-    if (lastIndex < message.content.length) {
-      parts.push(message.content.slice(lastIndex))
+    if (lastIndex < text.length) {
+      parts.push(text.slice(lastIndex))
     }
 
-    return <p className="whitespace-pre-wrap">{parts}</p>
+    return parts
+  }
+
+  // Recursively process children to inject citation markers
+  const processChildren = (children: ReactNode): ReactNode => {
+    return Children.map(children, (child) => {
+      if (typeof child === 'string') {
+        const processed = processCitations(child)
+        return processed.length === 1 && typeof processed[0] === 'string'
+          ? processed[0]
+          : <>{processed}</>
+      }
+      if (isValidElement(child) && child.props.children) {
+        return cloneElement(child, {
+          ...child.props,
+          children: processChildren(child.props.children),
+        })
+      }
+      return child
+    })
+  }
+
+  const renderContent = () => {
+    return (
+      <ReactMarkdown
+        components={{
+          // Process citations in all text-containing elements
+          p: ({ children }) => <p>{processChildren(children)}</p>,
+          li: ({ children }) => <li>{processChildren(children)}</li>,
+          td: ({ children }) => <td>{processChildren(children)}</td>,
+          th: ({ children }) => <th>{processChildren(children)}</th>,
+          // Ensure code blocks don't get citation processing
+          code: ({ className, children, ...props }) => (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          ),
+        }}
+      >
+        {message.content}
+      </ReactMarkdown>
+    )
   }
 
   return (
