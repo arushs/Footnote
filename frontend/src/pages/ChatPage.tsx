@@ -219,6 +219,7 @@ export function ChatPage() {
     isLoading: chatLoading,
     streamingContent,
     currentConversationId,
+    agentStatus,
     sendMessage,
     stopGeneration,
     loadConversation,
@@ -229,6 +230,14 @@ export function ChatPage() {
     enabled: !!folderId,
     agentMode,
   })
+
+  // Handle example question click
+  const handleExampleClick = useCallback(
+    (question: string) => {
+      sendMessage(question)
+    },
+    [sendMessage]
+  )
 
   // Handle citation click - open in Google Drive
   const handleCitationClick = useCallback((citation: Citation) => {
@@ -313,6 +322,8 @@ export function ChatPage() {
             onCitationClick={handleCitationClick}
             isSourcesOpen={isSourcesOpen}
             onToggleSources={handleToggleSources}
+            agentStatus={agentStatus}
+            onExampleClick={handleExampleClick}
           />
           <div className="border-t border-border px-4 py-2 bg-background flex items-center justify-between">
             <AgentModeToggle

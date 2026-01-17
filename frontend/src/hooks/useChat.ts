@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { Message, Citation, ChatState, AgentStatus } from '../types'
+import type { Message, Citation, ChatState } from '../types'
 import { addToast } from '../components/ui/toast'
 
 const DEFAULT_MAX_ITERATIONS = 10
