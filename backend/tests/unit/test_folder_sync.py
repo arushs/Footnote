@@ -1,13 +1,14 @@
 """Tests for the folder sync service."""
 
-import pytest
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.services.folder_sync import (
-    sync_folder_if_needed,
     SYNC_INTERVAL,
+    sync_folder_if_needed,
 )
 
 
@@ -31,7 +32,7 @@ class TestSyncFolderIfNeeded:
         """Should skip sync if recently synced."""
         mock_db = AsyncMock()
         mock_folder = MagicMock()
-        mock_folder.last_synced_at = datetime.now(timezone.utc) - timedelta(minutes=30)
+        mock_folder.last_synced_at = datetime.now(UTC) - timedelta(minutes=30)
 
         result = await sync_folder_if_needed(
             db=mock_db,
@@ -58,9 +59,10 @@ class TestSyncFolderIfNeeded:
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             # Mock the Drive service
             mock_service = MagicMock()
             mock_service.files.return_value.list.return_value.execute.return_value = {
@@ -94,7 +96,7 @@ class TestSyncFolderIfNeeded:
         mock_folder = MagicMock()
         mock_folder.id = uuid.uuid4()
         mock_folder.google_folder_id = "gfolder123"
-        mock_folder.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        mock_folder.last_synced_at = datetime.now(UTC) - timedelta(hours=2)
 
         # Mock DB operations
         mock_result = MagicMock()
@@ -102,9 +104,10 @@ class TestSyncFolderIfNeeded:
         mock_db.execute = AsyncMock(return_value=mock_result)
         mock_db.commit = AsyncMock()
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 
@@ -134,7 +137,7 @@ class TestSyncDiffDetection:
         mock_folder = MagicMock()
         mock_folder.id = uuid.uuid4()
         mock_folder.google_folder_id = "gfolder123"
-        mock_folder.last_synced_at = datetime.now(timezone.utc) - timedelta(hours=2)
+        mock_folder.last_synced_at = datetime.now(UTC) - timedelta(hours=2)
 
         # No stored files
         mock_stored_result = MagicMock()
@@ -154,9 +157,10 @@ class TestSyncDiffDetection:
             }
         ]
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 
@@ -204,9 +208,10 @@ class TestSyncErrorHandling:
         mock_folder.google_folder_id = "gfolder123"
         mock_folder.last_synced_at = None
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 
@@ -242,9 +247,10 @@ class TestSyncErrorHandling:
         mock_folder.google_folder_id = "deleted_folder"
         mock_folder.last_synced_at = None
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 
@@ -278,9 +284,10 @@ class TestSyncErrorHandling:
         mock_folder.google_folder_id = "no_access"
         mock_folder.last_synced_at = None
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 
@@ -314,9 +321,10 @@ class TestSyncErrorHandling:
         mock_folder.google_folder_id = "rate_limited"
         mock_folder.last_synced_at = None
 
-        with patch("app.services.folder_sync.build") as mock_build, \
-             patch("asyncio.get_event_loop") as mock_loop:
-
+        with (
+            patch("app.services.folder_sync.build") as mock_build,
+            patch("asyncio.get_event_loop") as mock_loop,
+        ):
             mock_service = MagicMock()
             mock_build.return_value = mock_service
 

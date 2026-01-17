@@ -5,17 +5,17 @@ Efficiently detects and queues changed files for re-indexing.
 
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.db_models import Chunk, File, Folder, IndexingJob
+from app.models import Chunk, File, Folder, IndexingJob
 from app.services.extraction import ExtractionService
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ async def sync_folder_if_needed(
     Returns:
         Dict with sync status and changes made
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Check if sync is needed
     if folder.last_synced_at and (now - folder.last_synced_at) < SYNC_INTERVAL:
@@ -72,9 +72,7 @@ async def sync_folder_if_needed(
         current_file_map = {f["id"]: f for f in current_files}
 
         # Get stored file state from database
-        stored_files_result = await db.execute(
-            select(File).where(File.folder_id == folder.id)
-        )
+        stored_files_result = await db.execute(select(File).where(File.folder_id == folder.id))
         stored_files = {f.google_file_id: f for f in stored_files_result.scalars()}
 
         # Compute diff
@@ -189,9 +187,7 @@ async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
             google_file_id=drive_file["id"],
             file_name=drive_file["name"],
             mime_type=drive_file["mimeType"],
-            modified_time=datetime.fromisoformat(
-                drive_file["modifiedTime"].replace("Z", "+00:00")
-            ),
+            modified_time=datetime.fromisoformat(drive_file["modifiedTime"].replace("Z", "+00:00")),
             index_status="pending",
         )
         db.add(new_file)
@@ -229,9 +225,7 @@ async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
         file.search_vector = None
 
         # Check if job already exists for this file
-        existing_job = await db.execute(
-            select(IndexingJob).where(IndexingJob.file_id == file.id)
-        )
+        existing_job = await db.execute(select(IndexingJob).where(IndexingJob.file_id == file.id))
         if not existing_job.scalar_one_or_none():
             job = IndexingJob(
                 folder_id=folder.id,

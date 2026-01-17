@@ -4,19 +4,19 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
-from tenacity import retry, retry_if_exception_type, wait_exponential, stop_after_attempt
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from app.database import async_session
 from app.config import settings
-from app.models.db_models import File, Chunk, IndexingJob, Session
-from app.services.drive import DriveService
-from app.services.extraction import ExtractionService
-from app.services.chunking import chunk_document, generate_file_preview, DocumentChunk
-from app.services.embedding import embed_document, embed_documents_batch
+from app.database import async_session
+from app.models import File, IndexingJob, Session
 from app.services.anthropic import get_client as get_anthropic_client
+from app.services.chunking import DocumentChunk, chunk_document, generate_file_preview
+from app.services.drive import DriveService
+from app.services.embedding import embed_document, embed_documents_batch
+from app.services.extraction import ExtractionService
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -70,14 +70,16 @@ async def _generate_single_context(
             model=settings.claude_fast_model,
             max_tokens=100,
             temperature=0.0,
-            messages=[{
-                "role": "user",
-                "content": CONTEXT_PROMPT.format(
-                    file_name=file_name,
-                    document_excerpt=document_excerpt,
-                    chunk_text=chunk_text,
-                )
-            }]
+            messages=[
+                {
+                    "role": "user",
+                    "content": CONTEXT_PROMPT.format(
+                        file_name=file_name,
+                        document_excerpt=document_excerpt,
+                        chunk_text=chunk_text,
+                    ),
+                }
+            ],
         )
         return response.content[0].text.strip()
     except Exception as e:
@@ -121,9 +123,7 @@ async def _generate_chunk_contexts(
 
     async def generate_with_limit(chunk: DocumentChunk) -> str:
         async with semaphore:
-            ctx = await _generate_single_context(
-                client, file_name, doc_excerpt, chunk.text
-            )
+            ctx = await _generate_single_context(client, file_name, doc_excerpt, chunk.text)
             if ctx:
                 return f"{ctx}\n\n{chunk.text}"
             return chunk.text
@@ -132,7 +132,7 @@ async def _generate_chunk_contexts(
     results = await asyncio.gather(*[generate_with_limit(c) for c in chunks])
 
     # Count how many got context
-    contextualized = sum(1 for r, c in zip(results, chunks) if r != c.text)
+    contextualized = sum(1 for r, c in zip(results, chunks, strict=False) if r != c.text)
     logger.info(f"Generated context for {contextualized}/{len(chunks)} chunks")
 
     return results
@@ -272,7 +272,9 @@ async def process_job(job: IndexingJob) -> None:
         document = await extraction.extract_pdf(pdf_content)
     else:
         # Skip unsupported file types (images, etc.) gracefully
-        logger.info(f"Skipping unsupported file type: {file_info.file_name} ({file_info.mime_type})")
+        logger.info(
+            f"Skipping unsupported file type: {file_info.file_name} ({file_info.mime_type})"
+        )
         await mark_job_completed(job)
         await update_file_status(job.file_id, "skipped")
         return
@@ -347,7 +349,9 @@ async def process_job(job: IndexingJob) -> None:
                     "location": json.dumps(chunk.location),
                     "chunk_index": idx,
                 }
-                for idx, (chunk, embedding) in enumerate(zip(chunks, chunk_embeddings))
+                for idx, (chunk, embedding) in enumerate(
+                    zip(chunks, chunk_embeddings, strict=False)
+                )
             ]
             await db.execute(
                 text("""
@@ -461,7 +465,7 @@ async def handle_job_failure(job: IndexingJob, error: Exception) -> None:
         else:
             # Schedule retry with exponential backoff
             backoff = calculate_backoff(job.attempts)
-            retry_at = datetime.now(timezone.utc) + backoff
+            retry_at = datetime.now(UTC) + backoff
             logger.info(f"Job {job.id} will retry in {int(backoff.total_seconds())}s")
 
             await db.execute(
@@ -529,6 +533,7 @@ async def worker_loop(concurrency: int = 5) -> None:
 
 if __name__ == "__main__":
     import os
+
     logging.basicConfig(level=logging.INFO)
     # Increased from 5 to 20 for I/O-bound work
     concurrency = int(os.environ.get("WORKER_CONCURRENCY", "20"))

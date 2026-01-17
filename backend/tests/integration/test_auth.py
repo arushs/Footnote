@@ -1,13 +1,12 @@
 """Integration tests for authentication routes."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from httpx import AsyncClient
 
-from app.models.db_models import Session, User
+from app.models import Session, User
 
 
 class TestGoogleLogin:
@@ -30,15 +29,11 @@ class TestGoogleCallback:
     """Tests for Google OAuth callback handling."""
 
     @pytest.mark.asyncio
-    async def test_callback_creates_new_user_and_session(
-        self, client: AsyncClient, db_session
-    ):
+    async def test_callback_creates_new_user_and_session(self, client: AsyncClient, db_session):
         """Test that callback creates a new user and session for new Google users."""
         with patch("httpx.AsyncClient") as MockHttpxClient:
             mock_client_instance = MagicMock()
-            MockHttpxClient.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client_instance
-            )
+            MockHttpxClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             MockHttpxClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Mock token exchange
@@ -74,9 +69,7 @@ class TestGoogleCallback:
         """Test that callback fails when token exchange fails."""
         with patch("httpx.AsyncClient") as MockHttpxClient:
             mock_client_instance = MagicMock()
-            MockHttpxClient.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client_instance
-            )
+            MockHttpxClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             MockHttpxClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Mock failed token exchange
@@ -84,9 +77,7 @@ class TestGoogleCallback:
             mock_response.status_code = 400
             mock_client_instance.post = AsyncMock(return_value=mock_response)
 
-            response = await client.get(
-                "/api/auth/google/callback?code=invalid-code"
-            )
+            response = await client.get("/api/auth/google/callback?code=invalid-code")
 
             assert response.status_code == 400
             assert "Failed to exchange code" in response.json()["detail"]
@@ -115,9 +106,7 @@ class TestLogout:
         # Verify session is deleted
         from sqlalchemy import select
 
-        result = await db_session.execute(
-            select(Session).where(Session.id == test_session.id)
-        )
+        result = await db_session.execute(select(Session).where(Session.id == test_session.id))
         session = result.scalar_one_or_none()
         assert session is None
 
@@ -153,9 +142,7 @@ class TestGetCurrentUser:
         assert response.json()["detail"] == "Not authenticated"
 
     @pytest.mark.asyncio
-    async def test_get_current_user_fails_with_invalid_session(
-        self, client: AsyncClient
-    ):
+    async def test_get_current_user_fails_with_invalid_session(self, client: AsyncClient):
         """Test that invalid session ID fails."""
         client.cookies.set("session_id", "not-a-valid-uuid")
         response = await client.get("/api/auth/me")
@@ -164,9 +151,7 @@ class TestGetCurrentUser:
         assert response.json()["detail"] == "Invalid session"
 
     @pytest.mark.asyncio
-    async def test_get_current_user_fails_with_nonexistent_session(
-        self, client: AsyncClient
-    ):
+    async def test_get_current_user_fails_with_nonexistent_session(self, client: AsyncClient):
         """Test that nonexistent session ID fails."""
         client.cookies.set("session_id", str(uuid.uuid4()))
         response = await client.get("/api/auth/me")
@@ -181,9 +166,7 @@ class TestGetCurrentUser:
         """Test that expired session triggers token refresh."""
         with patch("httpx.AsyncClient") as MockHttpxClient:
             mock_client_instance = MagicMock()
-            MockHttpxClient.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client_instance
-            )
+            MockHttpxClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             MockHttpxClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Mock successful token refresh
@@ -208,9 +191,7 @@ class TestGetCurrentUser:
         """Test that expired session with failed refresh returns 401."""
         with patch("httpx.AsyncClient") as MockHttpxClient:
             mock_client_instance = MagicMock()
-            MockHttpxClient.return_value.__aenter__ = AsyncMock(
-                return_value=mock_client_instance
-            )
+            MockHttpxClient.return_value.__aenter__ = AsyncMock(return_value=mock_client_instance)
             MockHttpxClient.return_value.__aexit__ = AsyncMock(return_value=None)
 
             # Mock failed token refresh

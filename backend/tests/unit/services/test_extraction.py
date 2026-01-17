@@ -3,8 +3,8 @@
 import pytest
 
 from app.services.extraction import (
-    ExtractionService,
     ExtractedDocument,
+    ExtractionService,
     GoogleDocsExtractor,
     PDFExtractor,
     TextBlock,
@@ -77,9 +77,7 @@ class TestGoogleDocsExtractor:
         extractor = GoogleDocsExtractor()
         result = extractor.extract(html)
 
-        list_block = next(
-            b for b in result.blocks if b.location.get("element_type") == "list"
-        )
+        list_block = next(b for b in result.blocks if b.location.get("element_type") == "list")
         assert "- Apples" in list_block.text
         assert "- Bananas" in list_block.text
         assert list_block.heading_context == "Shopping List"
@@ -101,9 +99,7 @@ class TestGoogleDocsExtractor:
         extractor = GoogleDocsExtractor()
         result = extractor.extract(html)
 
-        table_block = next(
-            b for b in result.blocks if b.location.get("element_type") == "table"
-        )
+        table_block = next(b for b in result.blocks if b.location.get("element_type") == "table")
         assert "Name | Value" in table_block.text
         assert "Alpha | 100" in table_block.text
 

@@ -1,16 +1,17 @@
 """Tests for the standard RAG chat service."""
 
-import pytest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.chat_rag import (
-    format_location,
-    build_google_drive_url,
-    build_context,
-    extract_citation_numbers,
-    STANDARD_SYSTEM_PROMPT,
+import pytest
+
+from app.services.chat.rag import (
     CONTEXT_TOP_K,
+    STANDARD_SYSTEM_PROMPT,
+    build_context,
+    build_google_drive_url,
+    extract_citation_numbers,
+    format_location,
 )
 
 
@@ -170,7 +171,7 @@ class TestStandardRAGFlow:
     @pytest.mark.asyncio
     async def test_standard_rag_yields_tokens(self):
         """Standard RAG should yield SSE-formatted tokens."""
-        from app.services.chat_rag import standard_rag
+        from app.services.chat.rag import standard_rag
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
@@ -185,11 +186,11 @@ class TestStandardRAGFlow:
         mock_db.flush = AsyncMock()
 
         # Mock hybrid search
-        with patch("app.services.chat_rag.hybrid_retrieve_and_rerank") as mock_search:
+        with patch("app.services.chat.rag.hybrid_retrieve_and_rerank") as mock_search:
             mock_search.return_value = []
 
             # Mock Anthropic client
-            with patch("app.services.chat_rag.get_client") as mock_get_client:
+            with patch("app.services.chat.rag.get_client") as mock_get_client:
                 mock_client = MagicMock()
 
                 class MockStream:
@@ -204,6 +205,7 @@ class TestStandardRAGFlow:
                         async def gen():
                             yield "Test"
                             yield " response"
+
                         return gen()
 
                 mock_client.messages.stream.return_value = MockStream()
@@ -211,9 +213,7 @@ class TestStandardRAGFlow:
 
                 # Collect all yielded chunks
                 chunks = []
-                async for chunk in standard_rag(
-                    mock_db, folder_id, conversation, "test question"
-                ):
+                async for chunk in standard_rag(mock_db, folder_id, conversation, "test question"):
                     chunks.append(chunk)
 
                 # Should have token chunks and done message
@@ -224,7 +224,7 @@ class TestStandardRAGFlow:
     @pytest.mark.asyncio
     async def test_standard_rag_stores_messages(self):
         """Standard RAG should store user and assistant messages."""
-        from app.services.chat_rag import standard_rag
+        from app.services.chat.rag import standard_rag
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
@@ -238,10 +238,10 @@ class TestStandardRAGFlow:
         mock_db.add = MagicMock()
         mock_db.flush = AsyncMock()
 
-        with patch("app.services.chat_rag.hybrid_retrieve_and_rerank") as mock_search:
+        with patch("app.services.chat.rag.hybrid_retrieve_and_rerank") as mock_search:
             mock_search.return_value = []
 
-            with patch("app.services.chat_rag.get_client") as mock_get_client:
+            with patch("app.services.chat.rag.get_client") as mock_get_client:
                 mock_client = MagicMock()
 
                 class MockStream:
@@ -255,14 +255,13 @@ class TestStandardRAGFlow:
                     def text_stream(self):
                         async def gen():
                             yield "Response"
+
                         return gen()
 
                 mock_client.messages.stream.return_value = MockStream()
                 mock_get_client.return_value = mock_client
 
-                async for _ in standard_rag(
-                    mock_db, folder_id, conversation, "test question"
-                ):
+                async for _ in standard_rag(mock_db, folder_id, conversation, "test question"):
                     pass
 
                 # Should have called db.add twice (user + assistant)

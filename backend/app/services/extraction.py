@@ -91,9 +91,7 @@ class GoogleDocsExtractor:
                     continue
 
                 level = int(tag_name[1])
-                heading_stack = [
-                    (lvl, txt) for lvl, txt in heading_stack if lvl < level
-                ]
+                heading_stack = [(lvl, txt) for lvl, txt in heading_stack if lvl < level]
                 heading_stack.append((level, text))
 
                 heading_path = self._build_heading_path(heading_stack)
@@ -279,9 +277,7 @@ class PDFExtractor:
             },
         )
 
-    def _parse_markdown_blocks(
-        self, markdown: str, page_num: int
-    ) -> list[TextBlock]:
+    def _parse_markdown_blocks(self, markdown: str, page_num: int) -> list[TextBlock]:
         """Parse markdown content into text blocks."""
         blocks: list[TextBlock] = []
         current_heading = None

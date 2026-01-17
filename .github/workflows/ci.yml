@@ -52,10 +52,21 @@ jobs:
         uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
-        run: uv sync
+        run: uv sync --extra dev
 
-      - name: Check Python syntax
-        run: uv run python -m py_compile main.py
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Type check with Mypy
+        run: uv run mypy app/
+
+      - name: Run tests
+        run: uv run pytest tests/unit -v
+        env:
+          TESTING: "true"
 
       - name: Verify imports
         run: |
@@ -63,6 +74,8 @@ jobs:
           import app.config
           import app.routes.chat
           import app.services.embedding
-          import app.services.rag
+          import app.services.chat
+          import app.services.tools
+          import app.models
           print('All imports successful')
           "

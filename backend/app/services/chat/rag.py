@@ -8,14 +8,14 @@ import json
 import logging
 import re
 import uuid
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from typing import AsyncGenerator
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models.db_models import Conversation, Message
+from app.models import Conversation, Message
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_retrieve_and_rerank
 
@@ -158,10 +158,10 @@ async def standard_rag(
         ) as stream:
             async for text in stream.text_stream:
                 full_response += text
-                yield f'data: {json.dumps({"token": text})}\n\n'
+                yield f"data: {json.dumps({'token': text})}\n\n"
     except Exception as e:
         logger.error(f"Error streaming response: {e}")
-        yield f'data: {json.dumps({"error": str(e)})}\n\n'
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
         return
 
     # 6. Extract citations from the response
@@ -173,9 +173,7 @@ async def standard_rag(
             chunk = top_chunks[num - 1]
             location = format_location(chunk.location)
             excerpt = (
-                chunk.chunk_text[:200] + "..."
-                if len(chunk.chunk_text) > 200
-                else chunk.chunk_text
+                chunk.chunk_text[:200] + "..." if len(chunk.chunk_text) > 200 else chunk.chunk_text
             )
 
             citations[str(num)] = {
@@ -197,4 +195,4 @@ async def standard_rag(
     await db.commit()  # Explicit commit for streaming response
 
     # 8. Send final message with metadata
-    yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": searched_files, "conversation_id": str(conversation.id)})}\n\n'
+    yield f"data: {json.dumps({'done': True, 'citations': citations, 'searched_files': searched_files, 'conversation_id': str(conversation.id)})}\n\n"

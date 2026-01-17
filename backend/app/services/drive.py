@@ -4,7 +4,6 @@ from dataclasses import dataclass
 
 import httpx
 
-
 # Module-level HTTP client for connection reuse
 _http_client: httpx.AsyncClient | None = None
 

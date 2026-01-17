@@ -1,12 +1,10 @@
 """Tests for agent tool definitions."""
 
-import pytest
-
-from app.services.agent_tools import (
-    SEARCH_FOLDER_TOOL,
+from app.services.tools import (
+    ALL_TOOLS,
     GET_FILE_CHUNKS_TOOL,
     GET_FILE_TOOL,
-    ALL_TOOLS,
+    SEARCH_FOLDER_TOOL,
 )
 
 
@@ -172,6 +170,6 @@ class TestToolSchemaValidity:
     def test_all_params_have_descriptions(self):
         """All parameters should have descriptions."""
         for tool in ALL_TOOLS:
-            for param, spec in tool["input_schema"]["properties"].items():
+            for _param, spec in tool["input_schema"]["properties"].items():
                 assert "description" in spec
                 assert len(spec["description"]) > 0

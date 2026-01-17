@@ -8,9 +8,27 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.embedding import embed_query, rerank
-from app.services.retrieval import RetrievedChunk, format_vector
 
 logger = logging.getLogger(__name__)
+
+
+def format_vector(embedding: list[float]) -> str:
+    """Format embedding list as PostgreSQL vector string."""
+    return "[" + ",".join(str(x) for x in embedding) + "]"
+
+
+@dataclass
+class RetrievedChunk:
+    """A chunk retrieved from vector search."""
+
+    chunk_id: uuid.UUID
+    file_id: uuid.UUID
+    file_name: str
+    google_file_id: str
+    chunk_text: str
+    location: dict
+    similarity_score: float
+    rerank_score: float | None = None
 
 
 # RRF fusion constant (higher values give more weight to top results)
@@ -179,7 +197,9 @@ async def hybrid_search(
         List of hybrid search results ordered by combined RRF score
     """
     # Run both searches in parallel conceptually (both are async)
-    logger.info(f"[HYBRID] Starting hybrid search for query: '{query[:50]}...' in folder {folder_id}")
+    logger.info(
+        f"[HYBRID] Starting hybrid search for query: '{query[:50]}...' in folder {folder_id}"
+    )
     query_embedding = await embed_query(query)
     logger.info(f"[HYBRID] Got embedding (length: {len(query_embedding)})")
 
@@ -190,9 +210,7 @@ async def hybrid_search(
     logger.info(f"[HYBRID] Keyword search returned {len(keyword_results)} results")
 
     # Build lookup maps
-    keyword_ranks: dict[uuid.UUID, int] = {
-        chunk_id: rank for chunk_id, rank in keyword_results
-    }
+    keyword_ranks: dict[uuid.UUID, int] = {chunk_id: rank for chunk_id, rank in keyword_results}
 
     # Build combined results
     chunk_data: dict[uuid.UUID, dict] = {}

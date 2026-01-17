@@ -2,13 +2,13 @@
 
 import json
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 
-from app.models.db_models import Chunk, Conversation, File, Folder, Message
+from app.models import Chunk, Conversation, File, Folder, Message
 from app.routes.chat import (
     build_context,
     build_google_drive_url,
@@ -21,9 +21,7 @@ class TestChatEndpoint:
     """Tests for the main chat endpoint."""
 
     @pytest.mark.asyncio
-    async def test_chat_requires_authentication(
-        self, client: AsyncClient, test_folder: Folder
-    ):
+    async def test_chat_requires_authentication(self, client: AsyncClient, test_folder: Folder):
         """Test that chat endpoint requires authentication."""
         response = await client.post(
             f"/api/folders/{test_folder.id}/chat",
@@ -33,9 +31,7 @@ class TestChatEndpoint:
         assert response.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_chat_returns_404_for_nonexistent_folder(
-        self, auth_client: AsyncClient
-    ):
+    async def test_chat_returns_404_for_nonexistent_folder(self, auth_client: AsyncClient):
         """Test that chat returns 404 for nonexistent folder."""
         response = await auth_client.post(
             f"/api/folders/{uuid.uuid4()}/chat",
@@ -45,9 +41,7 @@ class TestChatEndpoint:
         assert response.status_code == 404
 
     @pytest.mark.asyncio
-    async def test_chat_returns_400_for_invalid_folder_id(
-        self, auth_client: AsyncClient
-    ):
+    async def test_chat_returns_400_for_invalid_folder_id(self, auth_client: AsyncClient):
         """Test that chat returns 400 for invalid folder ID."""
         response = await auth_client.post(
             "/api/folders/not-a-uuid/chat",
@@ -81,10 +75,11 @@ class TestChatEndpoint:
         mock_anthropic,
     ):
         """Test that chat creates a new conversation and returns streaming response."""
-        with patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]), \
-             patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
-             patch("app.routes.chat.get_client", return_value=mock_anthropic):
-
+        with (
+            patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]),
+            patch("app.routes.chat.rerank", mock_embedding_service["rerank"]),
+            patch("app.routes.chat.get_client", return_value=mock_anthropic),
+        ):
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
                 json={"message": "What is in this document?"},
@@ -116,10 +111,11 @@ class TestChatEndpoint:
         mock_anthropic,
     ):
         """Test that chat can continue an existing conversation."""
-        with patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]), \
-             patch("app.routes.chat.rerank", mock_embedding_service["rerank"]), \
-             patch("app.routes.chat.get_client", return_value=mock_anthropic):
-
+        with (
+            patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]),
+            patch("app.routes.chat.rerank", mock_embedding_service["rerank"]),
+            patch("app.routes.chat.get_client", return_value=mock_anthropic),
+        ):
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
                 json={
@@ -160,9 +156,7 @@ class TestListConversations:
         test_messages: list[Message],
     ):
         """Test that list conversations returns all conversations for a folder."""
-        response = await auth_client.get(
-            f"/api/folders/{test_folder.id}/conversations"
-        )
+        response = await auth_client.get(f"/api/folders/{test_folder.id}/conversations")
 
         assert response.status_code == 200
         data = response.json()
@@ -175,9 +169,7 @@ class TestListConversations:
         self, auth_client: AsyncClient, test_folder: Folder
     ):
         """Test that list conversations returns empty for folder with no conversations."""
-        response = await auth_client.get(
-            f"/api/folders/{test_folder.id}/conversations"
-        )
+        response = await auth_client.get(f"/api/folders/{test_folder.id}/conversations")
 
         assert response.status_code == 200
         assert response.json() == []
@@ -187,9 +179,7 @@ class TestListConversations:
         self, auth_client: AsyncClient
     ):
         """Test that list conversations returns 404 for nonexistent folder."""
-        response = await auth_client.get(
-            f"/api/folders/{uuid.uuid4()}/conversations"
-        )
+        response = await auth_client.get(f"/api/folders/{uuid.uuid4()}/conversations")
 
         assert response.status_code == 404
 
@@ -205,9 +195,7 @@ class TestGetConversationMessages:
         test_messages: list[Message],
     ):
         """Test that get messages returns all messages in conversation."""
-        response = await auth_client.get(
-            f"/api/conversations/{test_conversation.id}/messages"
-        )
+        response = await auth_client.get(f"/api/conversations/{test_conversation.id}/messages")
 
         assert response.status_code == 200
         data = response.json()
@@ -219,9 +207,7 @@ class TestGetConversationMessages:
     @pytest.mark.asyncio
     async def test_get_messages_not_found(self, auth_client: AsyncClient):
         """Test that get messages returns 404 for nonexistent conversation."""
-        response = await auth_client.get(
-            f"/api/conversations/{uuid.uuid4()}/messages"
-        )
+        response = await auth_client.get(f"/api/conversations/{uuid.uuid4()}/messages")
 
         assert response.status_code == 404
 
@@ -230,8 +216,9 @@ class TestGetConversationMessages:
         self, client: AsyncClient, db_session, test_conversation: Conversation
     ):
         """Test that user cannot access another user's conversation."""
-        from app.models.db_models import Session, User
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+
+        from app.models import Session, User
 
         other_user = User(
             id=uuid.uuid4(),
@@ -246,15 +233,13 @@ class TestGetConversationMessages:
             user_id=other_user.id,
             access_token="other-token",
             refresh_token="other-refresh",
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         db_session.add(other_session)
         await db_session.flush()
 
         client.cookies.set("session_id", str(other_session.id))
-        response = await client.get(
-            f"/api/conversations/{test_conversation.id}/messages"
-        )
+        response = await client.get(f"/api/conversations/{test_conversation.id}/messages")
 
         assert response.status_code == 403
 
@@ -295,8 +280,9 @@ class TestGetChunkContext:
         self, client: AsyncClient, db_session, test_chunks: list[Chunk]
     ):
         """Test that user cannot access another user's chunk."""
-        from app.models.db_models import Session, User
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
+
+        from app.models import Session, User
 
         other_user = User(
             id=uuid.uuid4(),
@@ -311,7 +297,7 @@ class TestGetChunkContext:
             user_id=other_user.id,
             access_token="other-token",
             refresh_token="other-refresh",
-            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
         )
         db_session.add(other_session)
         await db_session.flush()
@@ -369,7 +355,7 @@ class TestHelperFunctions:
 
     def test_build_context(self):
         """Test context building from chunks."""
-        from app.models.db_models import Chunk, File
+        from app.models import Chunk, File
 
         chunks_with_files = [
             (

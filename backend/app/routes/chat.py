@@ -4,9 +4,9 @@ import json
 import logging
 import re
 import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, Cookie
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select, text
@@ -18,18 +18,19 @@ from app.database import get_db
 from app.services.anthropic import get_client
 
 logger = logging.getLogger(__name__)
-from app.models.db_models import (
-    Folder,
-    File,
+from app.models import (
     Chunk,
     Conversation,
+    File,
+    Folder,
     Message,
+)
+from app.models import (
     Session as DbSession,
 )
 from app.routes.auth import get_current_session
-from app.services.embedding import embed_query, rerank
-from app.services.chat_rag import standard_rag
-from app.services.agent_rag import agentic_rag
+from app.services.chat import agentic_rag, standard_rag
+from app.services.embedding import rerank
 from app.services.folder_sync import sync_folder_if_needed
 
 router = APIRouter()
@@ -193,9 +194,7 @@ def build_context(chunks_with_files: list[tuple[Chunk, File, float]]) -> str:
     context_parts = []
     for i, (chunk, file, _) in enumerate(chunks_with_files):
         location = format_location(chunk.location, file.mime_type)
-        context_parts.append(
-            f"[{i + 1}] From '{file.file_name}' ({location}):\n{chunk.chunk_text}"
-        )
+        context_parts.append(f"[{i + 1}] From '{file.file_name}' ({location}):\n{chunk.chunk_text}")
     return "\n\n---\n\n".join(context_parts)
 
 
@@ -275,9 +274,9 @@ async def generate_streaming_response(
         ) as stream:
             async for text in stream.text_stream:
                 full_response += text
-                yield f'data: {json.dumps({"token": text})}\n\n'
+                yield f"data: {json.dumps({'token': text})}\n\n"
     except Exception as e:
-        yield f'data: {json.dumps({"error": str(e)})}\n\n'
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
         return
 
     # Extract citations from the response
@@ -288,7 +287,9 @@ async def generate_streaming_response(
         if 1 <= num <= len(top_chunks):
             chunk, file, _ = top_chunks[num - 1]
             location = format_location(chunk.location, file.mime_type)
-            excerpt = chunk.chunk_text[:200] + "..." if len(chunk.chunk_text) > 200 else chunk.chunk_text
+            excerpt = (
+                chunk.chunk_text[:200] + "..." if len(chunk.chunk_text) > 200 else chunk.chunk_text
+            )
 
             citations[str(num)] = {
                 "chunk_id": str(chunk.id),
@@ -309,7 +310,7 @@ async def generate_streaming_response(
     await db.flush()
 
     # Send final message with citations and metadata
-    yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": searched_files, "conversation_id": str(conversation.id)})}\n\n'
+    yield f"data: {json.dumps({'done': True, 'citations': citations, 'searched_files': searched_files, 'conversation_id': str(conversation.id)})}\n\n"
 
 
 @router.post("/folders/{folder_id}/chat")
@@ -324,7 +325,7 @@ async def chat(
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
 
     # Verify folder exists and belongs to user
     result = await db.execute(
@@ -357,7 +358,7 @@ async def chat(
         try:
             conv_uuid = uuid.UUID(request.conversation_id)
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid conversation ID")
+            raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
         result = await db.execute(
             select(Conversation).where(
@@ -374,7 +375,9 @@ async def chat(
         await db.flush()
 
     # Route to appropriate mode based on agent_mode flag
-    logger.info(f"[CHAT] Chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}...")
+    logger.info(
+        f"[CHAT] Chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}..."
+    )
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
         logger.info(f"[CHAT] Using AGENT mode (max_iterations: {request.max_iterations})")
@@ -414,7 +417,7 @@ async def list_conversations(
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
 
     # Verify folder belongs to user
     result = await db.execute(
@@ -443,7 +446,11 @@ async def list_conversations(
         user_messages = [m for m in conv.messages if m.role == "user"]
         if user_messages:
             first_msg = min(user_messages, key=lambda m: m.created_at)
-            preview = first_msg.content[:100] + "..." if len(first_msg.content) > 100 else first_msg.content
+            preview = (
+                first_msg.content[:100] + "..."
+                if len(first_msg.content) > 100
+                else first_msg.content
+            )
         else:
             preview = "New conversation"
 
@@ -470,7 +477,7 @@ async def get_conversation_messages(
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
     # Get conversation and verify ownership through folder
     result = await db.execute(
@@ -488,9 +495,7 @@ async def get_conversation_messages(
 
     # Get messages
     result = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conv_uuid)
-        .order_by(Message.created_at)
+        select(Message).where(Message.conversation_id == conv_uuid).order_by(Message.created_at)
     )
     messages = result.scalars().all()
 
@@ -516,15 +521,13 @@ async def get_chunk_context(
     try:
         chunk_uuid = uuid.UUID(chunk_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chunk ID")
+        raise HTTPException(status_code=400, detail="Invalid chunk ID") from None
 
     # Get chunk with file and folder info
     result = await db.execute(
         select(Chunk)
         .where(Chunk.id == chunk_uuid)
-        .options(
-            selectinload(Chunk.file).selectinload(File.folder)
-        )
+        .options(selectinload(Chunk.file).selectinload(File.folder))
     )
     chunk = result.scalar_one_or_none()
 
@@ -577,7 +580,7 @@ async def create_conversation(
     try:
         folder_uuid = uuid.UUID(request.folder_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid folder ID")
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
 
     # Verify folder exists and belongs to user
     result = await db.execute(
@@ -614,7 +617,7 @@ async def get_conversation(
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
     result = await db.execute(
         select(Conversation)
@@ -649,7 +652,7 @@ async def update_conversation(
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
     result = await db.execute(
         select(Conversation)
@@ -686,7 +689,7 @@ async def delete_conversation(
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
     result = await db.execute(
         select(Conversation)
@@ -716,7 +719,7 @@ async def chat_in_conversation(
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid conversation ID")
+        raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
     # Get conversation with folder
     result = await db.execute(
@@ -748,10 +751,14 @@ async def chat_in_conversation(
     )
 
     # Route to appropriate mode based on agent_mode flag
-    logger.info(f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}...")
+    logger.info(
+        f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}..."
+    )
     if request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
-        logger.info(f"[CHAT] Using AGENT mode (conversation, max_iterations: {request.max_iterations})")
+        logger.info(
+            f"[CHAT] Using AGENT mode (conversation, max_iterations: {request.max_iterations})"
+        )
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder.id,

@@ -1,17 +1,17 @@
 """Tests for the agentic RAG service."""
 
-import pytest
 import json
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.agent_rag import (
-    format_location,
-    build_google_drive_url,
-    extract_citations_from_text,
-    execute_tool,
-    build_agent_system_prompt,
+import pytest
+
+from app.services.chat.agent import (
     DEFAULT_MAX_ITERATIONS,
+    build_agent_system_prompt,
+    execute_tool,
+    extract_citations_from_text,
+    format_location,
 )
 
 
@@ -37,88 +37,92 @@ class TestFormatLocation:
 
 
 class TestExtractCitationsFromText:
-    """Tests for extracting [filename] citations."""
+    """Tests for extracting [number] citations from indexed_chunks list."""
 
-    def test_extract_matching_filename(self):
-        """Should extract citations matching searched files."""
-        text = "According to [report.pdf], the data shows..."
-        searched_files = {
-            "report.pdf": {
+    def test_extract_single_citation(self):
+        """Should extract single numeric citation matching indexed_chunks."""
+        text = "According to the report [1], the data shows..."
+        indexed_chunks = [
+            {
                 "chunk_id": str(uuid.uuid4()),
-                "file_id": uuid.uuid4(),
+                "file_name": "report.pdf",
                 "location": "Page 1",
                 "excerpt": "Data shows...",
                 "google_drive_url": "https://drive.google.com/file/d/abc/view",
             }
-        }
+        ]
 
-        citations = extract_citations_from_text(text, searched_files)
+        citations = extract_citations_from_text(text, indexed_chunks)
 
         assert len(citations) == 1
         assert citations["1"]["file_name"] == "report.pdf"
 
-    def test_extract_multiple_files(self):
-        """Should extract multiple file citations."""
-        text = "See [doc1.pdf] and also [doc2.pdf] for details."
-        searched_files = {
-            "doc1.pdf": {
+    def test_extract_multiple_citations(self):
+        """Should extract multiple numeric citations."""
+        text = "See source [1] and also [2] for details."
+        indexed_chunks = [
+            {
                 "chunk_id": "",
-                "file_id": uuid.uuid4(),
+                "file_name": "doc1.pdf",
                 "location": "Page 1",
                 "excerpt": "",
                 "google_drive_url": "",
             },
-            "doc2.pdf": {
+            {
                 "chunk_id": "",
-                "file_id": uuid.uuid4(),
+                "file_name": "doc2.pdf",
                 "location": "Page 2",
                 "excerpt": "",
                 "google_drive_url": "",
             },
-        }
+        ]
 
-        citations = extract_citations_from_text(text, searched_files)
+        citations = extract_citations_from_text(text, indexed_chunks)
 
         assert len(citations) == 2
+        assert citations["1"]["file_name"] == "doc1.pdf"
+        assert citations["2"]["file_name"] == "doc2.pdf"
 
-    def test_ignore_numeric_citations(self):
-        """Should ignore numeric citations like [1]."""
-        text = "This fact [1] is from [report.pdf]."
-        searched_files = {
-            "report.pdf": {
+    def test_extract_only_valid_indices(self):
+        """Should only extract citations with valid indices in indexed_chunks."""
+        text = "This fact [1] and [99] are mentioned."
+        indexed_chunks = [
+            {
                 "chunk_id": "",
-                "file_id": uuid.uuid4(),
+                "file_name": "report.pdf",
                 "location": "",
                 "excerpt": "",
                 "google_drive_url": "",
             }
-        }
+        ]
 
-        citations = extract_citations_from_text(text, searched_files)
+        citations = extract_citations_from_text(text, indexed_chunks)
 
-        # Should only have the filename citation, not [1]
+        # Should only have [1], not [99] since there's only 1 chunk
         assert len(citations) == 1
+        assert "1" in citations
+        assert "99" not in citations
 
-    def test_ignore_unknown_files(self):
-        """Should ignore files not in searched_files."""
-        text = "See [unknown.pdf] for details."
-        searched_files = {
-            "known.pdf": {
+    def test_ignore_out_of_range_citations(self):
+        """Should ignore citations outside indexed_chunks range."""
+        text = "See [5] for details."
+        indexed_chunks = [
+            {
                 "chunk_id": "",
-                "file_id": uuid.uuid4(),
+                "file_name": "known.pdf",
                 "location": "",
                 "excerpt": "",
                 "google_drive_url": "",
             }
-        }
+        ]
 
-        citations = extract_citations_from_text(text, searched_files)
+        citations = extract_citations_from_text(text, indexed_chunks)
 
         assert len(citations) == 0
 
     def test_empty_text(self):
         """Should return empty dict for empty text."""
-        citations = extract_citations_from_text("", {})
+        citations = extract_citations_from_text("", [])
         assert citations == {}
 
 
@@ -126,14 +130,14 @@ class TestExecuteTool:
     """Tests for tool execution."""
 
     @pytest.mark.asyncio
-    async def test_execute_search_folder_returns_json(self):
-        """Search folder tool should return JSON response."""
+    async def test_execute_search_folder_returns_text(self):
+        """Search folder tool should return formatted text response."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         # Only mock hybrid_search - it handles embed_query internally
-        with patch("app.services.agent_rag.hybrid_search") as mock_search:
+        with patch("app.services.chat.agent.hybrid_search") as mock_search:
             mock_search.return_value = []
 
             result = await execute_tool(
@@ -141,12 +145,11 @@ class TestExecuteTool:
                 {"query": "test query"},
                 folder_id,
                 mock_db,
-                searched_files,
+                indexed_chunks,
             )
 
-            parsed = json.loads(result)
-            assert "chunks" in parsed
-            assert isinstance(parsed["chunks"], list)
+            # When no results, returns "No results found."
+            assert result == "No results found."
 
     @pytest.mark.asyncio
     async def test_execute_search_folder_does_not_call_embed_query_directly(self):
@@ -157,22 +160,24 @@ class TestExecuteTool:
         """
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
-        with patch("app.services.agent_rag.hybrid_search") as mock_search:
+        with patch("app.services.chat.agent.hybrid_search") as mock_search:
             mock_search.return_value = []
 
             # Verify embed_query is not imported in agent_rag
-            import app.services.agent_rag as agent_rag_module
-            assert not hasattr(agent_rag_module, 'embed_query'), \
+            import app.services.chat.agent as agent_rag_module
+
+            assert not hasattr(agent_rag_module, "embed_query"), (
                 "embed_query should not be imported in agent_rag - hybrid_search handles it"
+            )
 
             await execute_tool(
                 "search_folder",
                 {"query": "test query"},
                 folder_id,
                 mock_db,
-                searched_files,
+                indexed_chunks,
             )
 
             # Verify hybrid_search was called with the query string (not an embedding)
@@ -186,9 +191,9 @@ class TestExecuteTool:
         """Should return error JSON when hybrid_search fails."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
-        with patch("app.services.agent_rag.hybrid_search") as mock_search:
+        with patch("app.services.chat.agent.hybrid_search") as mock_search:
             mock_search.side_effect = Exception("Connection timeout")
 
             result = await execute_tool(
@@ -196,7 +201,7 @@ class TestExecuteTool:
                 {"query": "test query"},
                 folder_id,
                 mock_db,
-                searched_files,
+                indexed_chunks,
             )
 
             parsed = json.loads(result)
@@ -209,14 +214,14 @@ class TestExecuteTool:
         """Search folder should return error for empty query."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         result = await execute_tool(
             "search_folder",
             {"query": ""},
             folder_id,
             mock_db,
-            searched_files,
+            indexed_chunks,
         )
 
         parsed = json.loads(result)
@@ -227,14 +232,14 @@ class TestExecuteTool:
         """Get file should return error for invalid UUID."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         result = await execute_tool(
             "get_file",
             {"file_id": "not-a-uuid"},
             folder_id,
             mock_db,
-            searched_files,
+            indexed_chunks,
         )
 
         parsed = json.loads(result)
@@ -250,14 +255,14 @@ class TestExecuteTool:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         result = await execute_tool(
             "get_file",
             {"file_id": str(uuid.uuid4())},
             folder_id,
             mock_db,
-            searched_files,
+            indexed_chunks,
         )
 
         parsed = json.loads(result)
@@ -266,7 +271,7 @@ class TestExecuteTool:
 
     @pytest.mark.asyncio
     async def test_execute_get_file_success(self):
-        """Get file should return file content when found."""
+        """Get file should return file content text when found."""
         mock_db = AsyncMock()
         mock_file = MagicMock()
         mock_file.id = uuid.uuid4()
@@ -280,7 +285,7 @@ class TestExecuteTool:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         # Mock get_user_session_for_folder, DriveService, and ExtractionService
         mock_session = MagicMock()
@@ -291,10 +296,11 @@ class TestExecuteTool:
         mock_block.text = "This is the extracted content..."
         mock_document.blocks = [mock_block]
 
-        with patch("app.services.agent_rag.get_user_session_for_folder") as mock_get_session, \
-             patch("app.services.agent_rag.DriveService") as mock_drive_class, \
-             patch("app.services.agent_rag.ExtractionService") as mock_extraction_class:
-
+        with (
+            patch("app.services.chat.agent.get_user_session_for_folder") as mock_get_session,
+            patch("app.services.chat.agent.DriveService") as mock_drive_class,
+            patch("app.services.chat.agent.ExtractionService") as mock_extraction_class,
+        ):
             mock_get_session.return_value = mock_session
 
             mock_drive = MagicMock()
@@ -312,27 +318,31 @@ class TestExecuteTool:
                 {"file_id": str(uuid.uuid4())},
                 folder_id,
                 mock_db,
-                searched_files,
+                indexed_chunks,
             )
 
-            parsed = json.loads(result)
-            assert parsed["file_name"] == "test.pdf"
-            assert "content" in parsed
-            assert parsed["source"] == "google_drive"
+            # Returns formatted text, not JSON
+            assert "[1]" in result
+            assert "test.pdf" in result
+            assert "This is the extracted content..." in result
+
+            # Check indexed_chunks was updated
+            assert len(indexed_chunks) == 1
+            assert indexed_chunks[0]["file_name"] == "test.pdf"
 
     @pytest.mark.asyncio
     async def test_execute_unknown_tool(self):
         """Unknown tool should return error."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
-        searched_files = {}
+        indexed_chunks = []
 
         result = await execute_tool(
             "unknown_tool",
             {},
             folder_id,
             mock_db,
-            searched_files,
+            indexed_chunks,
         )
 
         parsed = json.loads(result)
@@ -422,7 +432,7 @@ class TestAgenticRAGFlow:
     @pytest.mark.asyncio
     async def test_agentic_rag_emits_status(self):
         """Agentic RAG should emit agent_status events."""
-        from app.services.agent_rag import agentic_rag
+        from app.services.chat.agent import agentic_rag
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
@@ -436,7 +446,7 @@ class TestAgenticRAGFlow:
         mock_db.add = MagicMock()
         mock_db.flush = AsyncMock()
 
-        with patch("app.services.agent_rag.get_client") as mock_get_client:
+        with patch("app.services.chat.agent.get_client") as mock_get_client:
             mock_client = MagicMock()
 
             # Mock a response that doesn't use tools
@@ -447,9 +457,7 @@ class TestAgenticRAGFlow:
             mock_get_client.return_value = mock_client
 
             chunks = []
-            async for chunk in agentic_rag(
-                mock_db, folder_id, conversation, "test question"
-            ):
+            async for chunk in agentic_rag(mock_db, folder_id, conversation, "test question"):
                 chunks.append(chunk)
 
             # Should have status and token chunks
@@ -459,7 +467,7 @@ class TestAgenticRAGFlow:
     @pytest.mark.asyncio
     async def test_agentic_rag_handles_tool_use(self):
         """Agentic RAG should handle tool use responses."""
-        from app.services.agent_rag import agentic_rag
+        from app.services.chat.agent import agentic_rag
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
@@ -474,9 +482,10 @@ class TestAgenticRAGFlow:
         mock_db.flush = AsyncMock()
 
         # Only mock hybrid_search - embed_query is handled internally
-        with patch("app.services.agent_rag.get_client") as mock_get_client, \
-             patch("app.services.agent_rag.hybrid_search") as mock_search:
-
+        with (
+            patch("app.services.chat.agent.get_client") as mock_get_client,
+            patch("app.services.chat.agent.hybrid_search") as mock_search,
+        ):
             mock_search.return_value = []
 
             mock_client = MagicMock()
@@ -499,15 +508,11 @@ class TestAgenticRAGFlow:
             text_block.text = "Based on my search, here is the answer."
             final_response.content = [text_block]
 
-            mock_client.messages.create = AsyncMock(
-                side_effect=[tool_use_response, final_response]
-            )
+            mock_client.messages.create = AsyncMock(side_effect=[tool_use_response, final_response])
             mock_get_client.return_value = mock_client
 
             chunks = []
-            async for chunk in agentic_rag(
-                mock_db, folder_id, conversation, "test question"
-            ):
+            async for chunk in agentic_rag(mock_db, folder_id, conversation, "test question"):
                 chunks.append(chunk)
 
             # Should have multiple iterations

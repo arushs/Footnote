@@ -1,15 +1,9 @@
 """Tests for API routes."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from sqlalchemy import text
-
-from app.config import settings
 
 
 # Test fixtures and helpers
@@ -29,6 +23,7 @@ class TestAuthRoutes:
     def test_google_login_redirects(self):
         """Test that /api/auth/google redirects to Google OAuth."""
         from main import app
+
         client = TestClient(app, follow_redirects=False)
 
         response = client.get("/api/auth/google")
@@ -41,6 +36,7 @@ class TestAuthRoutes:
     def test_get_me_without_auth(self):
         """Test that /api/auth/me returns 401 without authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get("/api/auth/me")
@@ -51,12 +47,10 @@ class TestAuthRoutes:
     def test_get_me_with_invalid_session(self):
         """Test that /api/auth/me returns 401 with invalid session ID."""
         from main import app
+
         client = TestClient(app)
 
-        response = client.get(
-            "/api/auth/me",
-            cookies={"session_id": "invalid-uuid"}
-        )
+        response = client.get("/api/auth/me", cookies={"session_id": "invalid-uuid"})
 
         assert response.status_code == 401
         assert response.json()["detail"] == "Invalid session"
@@ -64,6 +58,7 @@ class TestAuthRoutes:
     def test_logout_clears_cookie(self):
         """Test that logout clears the session cookie."""
         from main import app
+
         client = TestClient(app)
 
         response = client.post("/api/auth/logout")
@@ -78,6 +73,7 @@ class TestFolderRoutes:
     def test_list_folders_without_auth(self):
         """Test that listing folders requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get("/api/folders")
@@ -87,11 +83,11 @@ class TestFolderRoutes:
     def test_create_folder_without_auth(self):
         """Test that creating a folder requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.post(
-            "/api/folders",
-            json={"google_folder_id": "test-id", "folder_name": "Test Folder"}
+            "/api/folders", json={"google_folder_id": "test-id", "folder_name": "Test Folder"}
         )
 
         assert response.status_code == 401
@@ -99,6 +95,7 @@ class TestFolderRoutes:
     def test_get_folder_invalid_id(self):
         """Test that invalid folder ID returns 400."""
         from main import app
+
         client = TestClient(app)
 
         # We need to mock authentication for this test
@@ -110,6 +107,7 @@ class TestFolderRoutes:
     def test_delete_folder_without_auth(self):
         """Test that deleting a folder requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.delete(f"/api/folders/{uuid.uuid4()}")
@@ -123,24 +121,20 @@ class TestChatRoutes:
     def test_chat_without_auth(self):
         """Test that chat requires authentication."""
         from main import app
+
         client = TestClient(app)
 
-        response = client.post(
-            f"/api/folders/{uuid.uuid4()}/chat",
-            json={"message": "Hello"}
-        )
+        response = client.post(f"/api/folders/{uuid.uuid4()}/chat", json={"message": "Hello"})
 
         assert response.status_code == 401
 
     def test_chat_invalid_folder_id(self):
         """Test that invalid folder ID returns 400."""
         from main import app
+
         client = TestClient(app)
 
-        response = client.post(
-            "/api/folders/not-a-uuid/chat",
-            json={"message": "Hello"}
-        )
+        response = client.post("/api/folders/not-a-uuid/chat", json={"message": "Hello"})
 
         # Returns 401 first since no auth
         assert response.status_code == 401
@@ -148,6 +142,7 @@ class TestChatRoutes:
     def test_list_conversations_without_auth(self):
         """Test that listing conversations requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get(f"/api/folders/{uuid.uuid4()}/conversations")
@@ -157,6 +152,7 @@ class TestChatRoutes:
     def test_get_messages_without_auth(self):
         """Test that getting messages requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get(f"/api/conversations/{uuid.uuid4()}/messages")
@@ -166,6 +162,7 @@ class TestChatRoutes:
     def test_get_chunk_context_without_auth(self):
         """Test that getting chunk context requires authentication."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get(f"/api/chunks/{uuid.uuid4()}/context")
@@ -179,6 +176,7 @@ class TestHealthCheck:
     def test_health_check(self):
         """Test that health check returns ok."""
         from main import app
+
         client = TestClient(app)
 
         response = client.get("/api/health")
@@ -193,11 +191,11 @@ class TestInputValidation:
     def test_create_folder_empty_name(self):
         """Test that empty folder name is handled."""
         from main import app
+
         client = TestClient(app)
 
         response = client.post(
-            "/api/folders",
-            json={"google_folder_id": "test-id", "folder_name": ""}
+            "/api/folders", json={"google_folder_id": "test-id", "folder_name": ""}
         )
 
         # Returns 401 first since no auth
@@ -206,12 +204,10 @@ class TestInputValidation:
     def test_chat_empty_message(self):
         """Test that empty message is validated."""
         from main import app
+
         client = TestClient(app)
 
-        response = client.post(
-            f"/api/folders/{uuid.uuid4()}/chat",
-            json={"message": ""}
-        )
+        response = client.post(f"/api/folders/{uuid.uuid4()}/chat", json={"message": ""})
 
         # Returns 401 first since no auth
         assert response.status_code == 401
