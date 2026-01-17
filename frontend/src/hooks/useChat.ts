@@ -1,21 +1,25 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { Message, Citation, ChatState } from '../types'
+import type { Message, Citation, ChatState, AgentStatus } from '../types'
 import { addToast } from '../components/ui/toast'
+
+const DEFAULT_MAX_ITERATIONS = 10
 
 interface UseChatOptions {
   folderId: string
   onSourcesUpdate?: (searchedFiles: string[], citations: Record<string, Citation>) => void
   enabled?: boolean
   agentMode?: boolean
+  maxIterations?: number
 }
 
-export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode = false }: UseChatOptions) {
+export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode = false, maxIterations = DEFAULT_MAX_ITERATIONS }: UseChatOptions) {
   const [state, setState] = useState<ChatState>({
     messages: [],
     isLoading: false,
     currentConversationId: null,
     streamingContent: '',
     streamingCitations: {},
+    agentStatus: undefined,
   })
 
   const abortControllerRef = useRef<AbortController | null>(null)
@@ -33,6 +37,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
       currentConversationId: null,
       streamingContent: '',
       streamingCitations: {},
+      agentStatus: undefined,
     })
   }, [folderId])
 
@@ -53,6 +58,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
       isLoading: true,
       streamingContent: '',
       streamingCitations: {},
+      agentStatus: agentMode ? { phase: 'searching', iteration: 1, maxIterations } : undefined,
     }))
 
     // Abort any existing request
@@ -74,6 +80,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
         body: JSON.stringify({
           message: content,
           agent_mode: agentMode,
+          max_iterations: maxIterations,
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -104,11 +111,25 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
           try {
             const data = JSON.parse(line.slice(6))
 
+            if (data.agent_status) {
+              setState(prev => ({
+                ...prev,
+                agentStatus: {
+                  phase: data.agent_status.phase,
+                  iteration: data.agent_status.iteration,
+                  maxIterations,
+                  tool: data.agent_status.tool,
+                },
+              }))
+            }
+
             if (data.token) {
               accumulatedContent += data.token
               setState(prev => ({
                 ...prev,
                 streamingContent: accumulatedContent,
+                // Clear agent status when we start receiving tokens (generating phase)
+                agentStatus: prev.agentStatus ? { ...prev.agentStatus, phase: 'generating' } : undefined,
               }))
             }
 
@@ -149,6 +170,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
         streamingContent: '',
         streamingCitations: {},
         currentConversationId: conversationId,
+        agentStatus: undefined,
       }))
 
       // Update sources panel
@@ -168,7 +190,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
         streamingContent: '',
       }))
     }
-  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate, enabled, agentMode])
+  }, [folderId, state.isLoading, state.currentConversationId, onSourcesUpdate, enabled, agentMode, maxIterations])
 
   const stopGeneration = useCallback(() => {
     if (abortControllerRef.current) {
@@ -181,7 +203,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
   }, [])
 
   const loadConversation = useCallback(async (conversationId: string) => {
-    // Set loading state and clear previous messages
+    // Set loading state
     setState(prev => ({
       ...prev,
       isLoading: true,
@@ -217,6 +239,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
       currentConversationId: null,
       streamingContent: '',
       streamingCitations: {},
+      agentStatus: undefined,
     })
   }, [])
 

@@ -143,7 +143,7 @@ async def standard_rag(
         content=user_message,
     )
     db.add(user_msg)
-    await db.flush()
+    await db.commit()  # Explicit commit for streaming response
 
     # 5. Stream response from Claude
     client = get_client()
@@ -194,7 +194,7 @@ async def standard_rag(
         citations=citations,
     )
     db.add(assistant_msg)
-    await db.flush()
+    await db.commit()  # Explicit commit for streaming response
 
     # 8. Send final message with metadata
     yield f'data: {json.dumps({"done": True, "citations": citations, "searched_files": searched_files, "conversation_id": str(conversation.id)})}\n\n'
