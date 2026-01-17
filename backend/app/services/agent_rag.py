@@ -205,27 +205,6 @@ async def execute_tool(
             "total_found": len(results),
         })
 
-    elif tool_name == "rewrite_query":
-        # Use a fast model to rewrite the query
-        logger.info(f"[AGENT] Rewriting query: '{tool_input.get('original_query', '')}' with feedback: '{tool_input.get('feedback', '')}'")
-        client = get_client()
-        rewrite_response = await client.messages.create(
-            model=settings.claude_fast_model,
-            max_tokens=200,
-            messages=[{
-                "role": "user",
-                "content": f"""Rewrite this search query for better document retrieval.
-
-Original query: {tool_input.get('original_query', '')}
-Problem with results: {tool_input.get('feedback', '')}
-
-Return ONLY the rewritten query, nothing else."""
-            }]
-        )
-        rewritten = rewrite_response.content[0].text.strip()
-        logger.info(f"[AGENT] Rewritten query: '{rewritten}'")
-        return rewritten
-
     elif tool_name == "get_file_chunks":
         # Fast: Return pre-indexed chunks
         file_id_str = tool_input.get("file_id", "")

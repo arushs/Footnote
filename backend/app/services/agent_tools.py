@@ -1,6 +1,10 @@
 """Tool definitions for the agentic RAG system.
 
 These tools are only used when agent_mode=True is enabled.
+
+Note: Query refinement is handled by the agent's reasoning loop, not as a separate tool.
+When search results are poor, the agent should simply call search_folder again with
+a different query based on its analysis of what went wrong.
 """
 
 SEARCH_FOLDER_TOOL = {
@@ -11,6 +15,12 @@ Use this tool when:
 - You need to find specific facts, quotes, or data
 - The user asks about something that should be in their documents
 - You need to verify information before answering
+- Previous search results were poor and you want to try different terms
+
+If results are poor, analyze what's missing and search again with:
+- Different terminology or synonyms
+- Broader or more specific terms
+- Alternative angles on the topic
 
 Returns: List of relevant document chunks with file names and relevance scores.""",
     "input_schema": {
@@ -22,32 +32,6 @@ Returns: List of relevant document chunks with file names and relevance scores."
             }
         },
         "required": ["query"],
-    },
-}
-
-REWRITE_QUERY_TOOL = {
-    "name": "rewrite_query",
-    "description": """Reformulate a search query when initial results were poor.
-
-Use this tool when:
-- search_folder returned mostly irrelevant results
-- You need to try a different angle or terminology
-- The original query was too broad or too narrow
-
-Provide feedback about what was wrong with the results to guide the rewrite.""",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "original_query": {
-                "type": "string",
-                "description": "The original search query that produced poor results",
-            },
-            "feedback": {
-                "type": "string",
-                "description": "What was wrong with the results (e.g., 'Got Q3 data but need Q4', 'Results were about marketing not engineering')",
-            },
-        },
-        "required": ["original_query", "feedback"],
     },
 }
 
@@ -98,4 +82,5 @@ Works with Google Docs and PDFs.""",
 }
 
 # All tools available to the agent
-ALL_TOOLS = [SEARCH_FOLDER_TOOL, REWRITE_QUERY_TOOL, GET_FILE_CHUNKS_TOOL, GET_FILE_TOOL]
+# Note: rewrite_query was removed - the agent handles query refinement through its reasoning
+ALL_TOOLS = [SEARCH_FOLDER_TOOL, GET_FILE_CHUNKS_TOOL, GET_FILE_TOOL]

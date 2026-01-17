@@ -383,6 +383,9 @@ async def chat(
             folder_id=folder_uuid,
             conversation=conversation,
             user_message=request.message,
+            folder_name=folder.folder_name,
+            files_indexed=folder.files_indexed,
+            files_total=folder.files_total,
             max_iterations=request.max_iterations,
         )
     else:
@@ -754,6 +757,9 @@ async def chat_in_conversation(
             folder_id=folder.id,
             conversation=conversation,
             user_message=request.message,
+            folder_name=folder.folder_name,
+            files_indexed=folder.files_indexed,
+            files_total=folder.files_total,
             max_iterations=request.max_iterations,
         )
     else:
