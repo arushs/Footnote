@@ -4,6 +4,7 @@ This is the optional agent mode - more thorough but slower.
 Uses Claude tool use for iterative search and query refinement.
 """
 
+import base64
 import json
 import logging
 import re
@@ -90,6 +91,61 @@ def format_location(location: dict) -> str:
 def build_google_drive_url(google_file_id: str) -> str:
     """Build a Google Drive URL for a file."""
     return f"https://drive.google.com/file/d/{google_file_id}/view"
+
+
+async def _describe_image_with_vision(
+    image_content: bytes,
+    mime_type: str,
+    file_name: str,
+) -> str:
+    """
+    Use Claude's vision capability to describe an image.
+
+    Args:
+        image_content: Raw image bytes
+        mime_type: Image MIME type (e.g., 'image/png')
+        file_name: Name of the image file for context
+
+    Returns:
+        Text description of the image
+    """
+    client = get_client()
+
+    # Normalize mime type for Claude API (it expects specific formats)
+    media_type = mime_type
+    if media_type == "image/jpg":
+        media_type = "image/jpeg"
+
+    try:
+        response = await client.messages.create(
+            model=settings.claude_model,
+            max_tokens=1000,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": base64.b64encode(image_content).decode("utf-8"),
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
+                               "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
+                               "2. Any text visible in the image (transcribe it)\n"
+                               "3. Key visual details that might be relevant for search and retrieval\n"
+                               "4. The overall context or purpose of the image if apparent",
+                    },
+                ],
+            }],
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error(f"[AGENT] Vision analysis failed for {file_name}: {e}")
+        return f"[Image analysis failed: {str(e)}]"
 
 
 async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) -> Session | None:
@@ -309,6 +365,28 @@ async def execute_tool(
                 logger.info(f"[AGENT] Downloading PDF: {file.file_name}")
                 pdf_content = await drive.download_file(file.google_file_id)
                 document = await extraction.extract_pdf(pdf_content)
+            elif extraction.is_image(file.mime_type):
+                # Use Claude vision to describe the image
+                logger.info(f"[AGENT] Analyzing image with vision: {file.file_name}")
+                image_content = await drive.download_file(file.google_file_id)
+                image_description = await _describe_image_with_vision(
+                    image_content, file.mime_type, file.file_name
+                )
+
+                # Add to indexed_chunks for citation
+                source_num = len(indexed_chunks) + 1
+                indexed_chunks.append({
+                    "chunk_id": "",
+                    "file_id": str(file.id),
+                    "file_name": file.file_name,
+                    "location": "Image analysis",
+                    "excerpt": image_description[:200] if image_description else "",
+                    "google_drive_url": build_google_drive_url(file.google_file_id),
+                })
+
+                logger.info(f"[AGENT] get_file analyzed image ({len(image_description)} chars) for {file.file_name} as [{source_num}]")
+
+                return f"[{source_num}] Image analysis of '{file.file_name}':\n\n{image_description}"
             else:
                 return json.dumps({"error": f"Unsupported file type: {file.mime_type}"})
 
