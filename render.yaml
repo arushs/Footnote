@@ -39,7 +39,6 @@ services:
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerTarget: production
     healthCheckPath: /api/health
     preDeployCommand: "for f in database/migrations/*.sql; do psql $DATABASE_URL -f $f; done"
     envVars:
@@ -78,7 +77,6 @@ services:
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerTarget: production
     dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
