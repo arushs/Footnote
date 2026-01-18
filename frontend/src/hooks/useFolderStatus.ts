@@ -20,7 +20,9 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
 
   const fetchFolder = useCallback(async () => {
     try {
-      const response = await fetch(apiUrl(`/api/folders/${folderId}`))
+      const response = await fetch(apiUrl(`/api/folders/${folderId}`), {
+        credentials: 'include',
+      })
       if (!response.ok) throw new Error('Folder not found')
       const data: Folder = await response.json()
       setFolder(data)
@@ -33,7 +35,9 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await fetch(apiUrl(`/api/folders/${folderId}/status`))
+      const response = await fetch(apiUrl(`/api/folders/${folderId}/status`), {
+        credentials: 'include',
+      })
       if (!response.ok) throw new Error('Failed to fetch status')
       const data: FolderStatus = await response.json()
       setStatus(data)

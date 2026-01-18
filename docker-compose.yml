@@ -71,6 +71,9 @@ services:
       API_PROXY_TARGET: http://backend:8000
     ports:
       - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -90,6 +93,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
     depends_on:
+      backend:
+        condition: service_started
       db:
         condition: service_healthy
       redis:
