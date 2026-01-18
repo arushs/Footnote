@@ -308,6 +308,7 @@ export function ChatPage() {
         <ChatHistory
           conversations={conversations}
           currentConversationId={currentConversationId}
+          folderName={folder?.folder_name}
           isLoading={conversationsLoading}
           onSelectConversation={handleSelectConversation}
           onNewConversation={handleNewConversation}
@@ -340,9 +341,7 @@ export function ChatPage() {
             placeholder={
               isIndexing
                 ? 'Please wait for indexing to complete...'
-                : agentMode
-                  ? 'Ask a complex question (agent will search iteratively)...'
-                  : 'Ask about your files...'
+                : 'Ask about your files...'
             }
           />
         </main>
