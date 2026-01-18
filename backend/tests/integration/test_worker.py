@@ -509,6 +509,7 @@ class TestImageProcessing:
             )
             # Verify job was marked completed
             mock_mark_completed.assert_called_once_with(job)
+            mock_update_progress.assert_called_once_with(job.folder_id)
 
     @pytest.mark.asyncio
     async def test_process_job_skips_oversized_image(

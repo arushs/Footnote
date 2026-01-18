@@ -1,7 +1,7 @@
 """Unified extraction service for multiple document types."""
 
 from app.services.file.extraction.google_docs import GoogleDocsExtractor
-from app.services.file.extraction.image import ImageExtractor, MAX_IMAGE_SIZE_BYTES
+from app.services.file.extraction.image import ImageExtractor
 from app.services.file.extraction.models import ExtractedDocument
 from app.services.file.extraction.pdf import PDFExtractor
 

@@ -1,9 +1,10 @@
 """Unit tests for image indexing functionality."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.services.file.extraction import ExtractionService, ImageExtractor, MAX_IMAGE_SIZE_BYTES
+import pytest
+
+from app.services.file.extraction import MAX_IMAGE_SIZE_BYTES, ExtractionService, ImageExtractor
 
 
 class TestExtractionServiceImageMethods:
