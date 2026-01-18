@@ -178,6 +178,22 @@ docker-compose down -v && docker-compose up
 docker-compose exec backend bash
 ```
 
+### Database Migrations
+
+Migrations live in `backend/database/migrations/` as numbered SQL files. Use the migrate script to apply them:
+
+```bash
+cd backend
+
+# Run pending migrations
+uv run bin/migrate
+
+# Check migration status
+uv run bin/migrate --status
+```
+
+The script tracks applied migrations in a `schema_migrations` table. To create a new migration, add a SQL file with the next number prefix (e.g., `003_add_feature.sql`).
+
 ## Deployment
 
 See `render.yaml` for Render deployment configuration. After deploying:

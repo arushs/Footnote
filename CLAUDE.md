@@ -20,6 +20,12 @@ cd backend && uv run ruff check . && uv run ruff format .
 
 # Type check
 cd backend && uv run mypy app
+
+# Run database migrations
+cd backend && uv run bin/migrate
+
+# Check migration status
+cd backend && uv run bin/migrate --status
 ```
 
 ### Frontend (React/Vite)
