@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 
+import httpx
 from sqlalchemy import text
 
 from app.celery_app import celery_app
@@ -353,6 +354,7 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
                     {
                         "id": str(uuid.uuid4()),
                         "file_id": str(file_uuid),
+                        "user_id": user_id,
                         "chunk_text": chunk.text,
                         "chunk_embedding": format_vector(embedding),
                         "location": json.dumps(chunk.location),
@@ -364,10 +366,11 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
                 ]
                 await db.execute(
                     text("""
-                        INSERT INTO chunks (id, file_id, chunk_text, chunk_embedding, location, chunk_index)
+                        INSERT INTO chunks (id, file_id, user_id, chunk_text, chunk_embedding, location, chunk_index)
                         SELECT
                             (value->>'id')::uuid,
                             (value->>'file_id')::uuid,
+                            (value->>'user_id')::uuid,
                             value->>'chunk_text',
                             CAST(value->>'chunk_embedding' AS vector),
                             (value->>'location')::jsonb,
@@ -385,6 +388,15 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
         logger.info(f"Successfully indexed {file_info.file_name} with {len(chunks)} chunks")
         return {"status": "completed", "file_id": file_id, "chunks": len(chunks)}
 
+    except httpx.HTTPStatusError as e:
+        # Handle permission denied (403) - skip without retry
+        if e.response.status_code == 403:
+            logger.warning(f"Permission denied for file {file_info.file_name}, marking as skipped")
+            await _update_file_status(file_uuid, "skipped")
+            await _update_folder_progress(folder_uuid)
+            return {"status": "skipped", "file_id": file_id, "reason": "permission_denied"}
+        # Other HTTP errors - treat as transient for retry
+        raise TransientIndexingError(str(e)) from e
     except PERMANENT_ERRORS as e:
         # Convert to our exception type for proper retry handling
         raise PermanentIndexingError(str(e)) from e

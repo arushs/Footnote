@@ -20,6 +20,7 @@ class Chunk(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     file_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     chunk_text: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_embedding = mapped_column(Vector(768), nullable=True)
     search_vector = mapped_column(TSVECTOR, nullable=True)

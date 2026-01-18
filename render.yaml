@@ -40,6 +40,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /api/health
+    preDeployCommand: "for f in database/migrations/*.sql; do psql $DATABASE_URL -f $f; done"
     envVars:
       - key: DATABASE_URL
         fromDatabase:

@@ -138,6 +138,7 @@ async def keyword_search(
     db: AsyncSession,
     query: str,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     top_k: int = 30,
 ) -> list[tuple[uuid.UUID, float]]:
     """
@@ -164,6 +165,7 @@ async def keyword_search(
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
+              AND c.user_id = :user_id
               AND c.search_vector @@ websearch_to_tsquery('english', :query)
             ORDER BY score DESC
             LIMIT :top_k
@@ -171,6 +173,7 @@ async def keyword_search(
         {
             "query": or_query,
             "folder_id": str(folder_id),
+            "user_id": str(user_id),
             "top_k": top_k,
         },
     )
@@ -191,6 +194,7 @@ async def vector_search_with_scores(
     db: AsyncSession,
     query_embedding: list[float],
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     top_k: int = 30,
 ) -> list[tuple[uuid.UUID, float, dict]]:
     """
@@ -219,6 +223,7 @@ async def vector_search_with_scores(
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
+              AND c.user_id = :user_id
               AND c.chunk_embedding IS NOT NULL
             ORDER BY c.chunk_embedding <=> CAST(:query_embedding AS vector)
             LIMIT :top_k
@@ -226,6 +231,7 @@ async def vector_search_with_scores(
         {
             "query_embedding": format_vector(query_embedding),
             "folder_id": str(folder_id),
+            "user_id": str(user_id),
             "top_k": top_k,
         },
     )
@@ -251,6 +257,7 @@ async def hybrid_search(
     db: AsyncSession,
     query: str,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     top_k: int = 30,
 ) -> list[HybridSearchResult]:
     """
@@ -273,10 +280,10 @@ async def hybrid_search(
     query_embedding = await embed_query(query)
     logger.info(f"[HYBRID] Got embedding (length: {len(query_embedding)})")
 
-    vector_results = await vector_search_with_scores(db, query_embedding, folder_id, top_k)
+    vector_results = await vector_search_with_scores(db, query_embedding, folder_id, user_id, top_k)
     logger.info(f"[HYBRID] Vector search returned {len(vector_results)} results")
 
-    keyword_results = await keyword_search(db, query, folder_id, top_k)
+    keyword_results = await keyword_search(db, query, folder_id, user_id, top_k)
     logger.info(f"[HYBRID] Keyword search returned {len(keyword_results)} results")
 
     # Build lookup maps
@@ -292,7 +299,7 @@ async def hybrid_search(
         vector_scores[chunk_id] = similarity
         chunk_data[chunk_id] = data
 
-    # For keyword-only results, fetch their data
+    # For keyword-only results, fetch their data (with user_id filter for defense-in-depth)
     keyword_only_ids = set(keyword_scores.keys()) - set(vector_scores.keys())
     if keyword_only_ids:
         result = await db.execute(
@@ -308,8 +315,9 @@ async def hybrid_search(
                 FROM chunks c
                 JOIN files f ON c.file_id = f.id
                 WHERE c.id = ANY(:chunk_ids)
+                  AND c.user_id = :user_id
             """),
-            {"chunk_ids": list(keyword_only_ids)},
+            {"chunk_ids": list(keyword_only_ids), "user_id": str(user_id)},
         )
         for row in result.fetchall():
             chunk_data[row.chunk_id] = {
@@ -361,6 +369,7 @@ async def hybrid_retrieve_and_rerank(
     db: AsyncSession,
     query: str,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     initial_top_k: int = 30,
     final_top_k: int = 10,
 ) -> list[RetrievedChunk]:
@@ -380,7 +389,7 @@ async def hybrid_retrieve_and_rerank(
         List of retrieved chunks ordered by rerank score
     """
     # Stage 1: Hybrid search with weighted scoring
-    candidates = await hybrid_search(db, query, folder_id, initial_top_k)
+    candidates = await hybrid_search(db, query, folder_id, user_id, initial_top_k)
 
     if not candidates:
         return []
