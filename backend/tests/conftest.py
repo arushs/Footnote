@@ -26,7 +26,7 @@ class MockFileMetadata:
 
 
 # Override settings before importing app modules
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/footnote_test"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:postgres@localhost:5432/footnote_test"
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:8000/api/auth/google/callback"
@@ -49,10 +49,11 @@ from app.models import (
 )
 from main import app
 
-# Test database engine
+# Test database engine - use pool_pre_ping to handle stale connections
 test_engine = create_async_engine(
     os.environ["DATABASE_URL"],
     echo=False,
+    pool_pre_ping=True,
 )
 test_async_session = async_sessionmaker(
     test_engine,
@@ -63,30 +64,45 @@ test_async_session = async_sessionmaker(
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create an instance of the default event loop for each test case."""
+    """Create an instance of the default event loop for the session."""
     import asyncio
 
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
 
-@pytest.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Create a fresh database session for each test."""
-    # Create tables
+@pytest.fixture(scope="session")
+async def setup_database():
+    """Setup database schema once for the entire test session."""
+    # Enable pgvector extension BEFORE creating tables (tables use vector type)
+    async with test_engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+    # Create all tables
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Enable pgvector extension
-        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+    yield
+
+    # Drop all tables after all tests complete
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(scope="function")
+async def db_session(setup_database) -> AsyncGenerator[AsyncSession, None]:
+    """Create a fresh database session for each test with clean data."""
+    # Truncate all tables to start fresh for each test
+    async with test_engine.begin() as conn:
+        # Order matters due to foreign key constraints - truncate in reverse dependency order
+        await conn.execute(text("TRUNCATE messages, conversations, chunks, indexing_jobs, files, folders, sessions, users RESTART IDENTITY CASCADE"))
 
     async with test_async_session() as session:
         yield session
-        await session.rollback()
-
-    # Clean up tables after test
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        # No need for explicit cleanup - next test truncates
 
 
 @pytest.fixture
@@ -216,13 +232,14 @@ async def test_file(db_session: AsyncSession, test_folder: Folder) -> File:
 
 
 @pytest.fixture
-async def test_chunks(db_session: AsyncSession, test_file: File) -> list[Chunk]:
+async def test_chunks(db_session: AsyncSession, test_file: File, test_user: User) -> list[Chunk]:
     """Create test chunks with embeddings."""
     chunks = []
     for i in range(3):
         chunk = Chunk(
             id=uuid.uuid4(),
             file_id=test_file.id,
+            user_id=test_user.id,
             chunk_text=f"This is chunk {i + 1} containing test content about topic {i + 1}.",
             location={"page": i + 1, "headings": [f"Section {i + 1}"]},
             chunk_index=i,
@@ -380,10 +397,10 @@ def mock_drive_service():
 def mock_embedding_service():
     """Mock embedding and reranking services."""
     with (
-        patch("app.services.embedding.embed_document") as mock_embed_document,
-        patch("app.services.embedding.embed_query") as mock_embed_query,
-        patch("app.services.embedding.embed_documents_batch") as mock_embed_batch,
-        patch("app.services.embedding.rerank") as mock_rerank,
+        patch("app.services.file.embedding.embed_document") as mock_embed_document,
+        patch("app.services.file.embedding.embed_query") as mock_embed_query,
+        patch("app.services.file.embedding.embed_documents_batch") as mock_embed_batch,
+        patch("app.services.file.embedding.rerank") as mock_rerank,
     ):
         # Return 768-dimensional dummy embeddings
         mock_embed_document.return_value = [0.1] * 768
@@ -406,6 +423,13 @@ def mock_anthropic():
     """Mock Anthropic Claude API for chat responses."""
     mock_client = MagicMock()
 
+    class MockUsage:
+        input_tokens = 100
+        output_tokens = 50
+
+    class MockFinalMessage:
+        usage = MockUsage()
+
     # Create a mock stream that yields tokens
     class MockStream:
         async def __aenter__(self):
@@ -421,6 +445,9 @@ def mock_anthropic():
                     yield token
 
             return gen()
+
+        async def get_final_message(self):
+            return MockFinalMessage()
 
     mock_client.messages.stream.return_value = MockStream()
 

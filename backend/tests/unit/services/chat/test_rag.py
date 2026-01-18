@@ -194,6 +194,13 @@ class TestStandardRAGFlow:
             with patch("app.services.chat.rag.get_client") as mock_get_client:
                 mock_client = MagicMock()
 
+                class MockUsage:
+                    input_tokens = 100
+                    output_tokens = 50
+
+                class MockFinalMessage:
+                    usage = MockUsage()
+
                 class MockStream:
                     async def __aenter__(self):
                         return self
@@ -209,20 +216,24 @@ class TestStandardRAGFlow:
 
                         return gen()
 
+                    async def get_final_message(self):
+                        return MockFinalMessage()
+
                 mock_client.messages.stream.return_value = MockStream()
                 mock_get_client.return_value = mock_client
 
-                # Collect all yielded chunks
-                chunks = []
-                async for chunk in standard_rag(
-                    mock_db, folder_id, user_id, conversation, "test question"
-                ):
-                    chunks.append(chunk)
+                with patch("app.services.chat.rag.track_llm_generation"):
+                    # Collect all yielded chunks
+                    chunks = []
+                    async for chunk in standard_rag(
+                        mock_db, folder_id, user_id, conversation, "test question"
+                    ):
+                        chunks.append(chunk)
 
-                # Should have token chunks and done message
-                assert len(chunks) > 0
-                assert any("token" in c for c in chunks)
-                assert any("done" in c for c in chunks)
+                    # Should have token chunks and done message
+                    assert len(chunks) > 0
+                    assert any("token" in c for c in chunks)
+                    assert any("done" in c for c in chunks)
 
     @pytest.mark.asyncio
     async def test_standard_rag_stores_messages(self):
@@ -248,6 +259,13 @@ class TestStandardRAGFlow:
             with patch("app.services.chat.rag.get_client") as mock_get_client:
                 mock_client = MagicMock()
 
+                class MockUsage:
+                    input_tokens = 100
+                    output_tokens = 50
+
+                class MockFinalMessage:
+                    usage = MockUsage()
+
                 class MockStream:
                     async def __aenter__(self):
                         return self
@@ -262,13 +280,17 @@ class TestStandardRAGFlow:
 
                         return gen()
 
+                    async def get_final_message(self):
+                        return MockFinalMessage()
+
                 mock_client.messages.stream.return_value = MockStream()
                 mock_get_client.return_value = mock_client
 
-                async for _ in standard_rag(
-                    mock_db, folder_id, user_id, conversation, "test question"
-                ):
-                    pass
+                with patch("app.services.chat.rag.track_llm_generation"):
+                    async for _ in standard_rag(
+                        mock_db, folder_id, user_id, conversation, "test question"
+                    ):
+                        pass
 
-                # Should have called db.add twice (user + assistant)
-                assert mock_db.add.call_count == 2
+                    # Should have called db.add twice (user + assistant)
+                    assert mock_db.add.call_count == 2

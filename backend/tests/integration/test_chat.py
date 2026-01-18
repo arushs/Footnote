@@ -9,12 +9,8 @@ import pytest
 from httpx import AsyncClient
 
 from app.models import Chunk, Conversation, File, Folder, Message
-from app.routes.chat import (
-    build_context,
-    build_google_drive_url,
-    extract_citation_numbers,
-    format_location,
-)
+from app.services.chat.rag import build_context, extract_citation_numbers
+from app.utils import build_google_drive_url, format_location
 
 
 class TestChatEndpoint:
@@ -76,9 +72,10 @@ class TestChatEndpoint:
     ):
         """Test that chat creates a new conversation and returns streaming response."""
         with (
-            patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]),
-            patch("app.routes.chat.rerank", mock_embedding_service["rerank"]),
-            patch("app.routes.chat.get_client", return_value=mock_anthropic),
+            patch("app.services.hybrid_search.embed_query", mock_embedding_service["embed_query"]),
+            patch("app.services.hybrid_search.rerank", mock_embedding_service["rerank"]),
+            patch("app.services.chat.rag.get_client", return_value=mock_anthropic),
+            patch("app.services.chat.rag.track_llm_generation"),
         ):
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
@@ -112,9 +109,10 @@ class TestChatEndpoint:
     ):
         """Test that chat can continue an existing conversation."""
         with (
-            patch("app.routes.chat.embed_query", mock_embedding_service["embed_query"]),
-            patch("app.routes.chat.rerank", mock_embedding_service["rerank"]),
-            patch("app.routes.chat.get_client", return_value=mock_anthropic),
+            patch("app.services.hybrid_search.embed_query", mock_embedding_service["embed_query"]),
+            patch("app.services.hybrid_search.rerank", mock_embedding_service["rerank"]),
+            patch("app.services.chat.rag.get_client", return_value=mock_anthropic),
+            patch("app.services.chat.rag.track_llm_generation"),
         ):
             response = await auth_client.post(
                 f"/api/folders/{test_folder.id}/chat",
@@ -355,48 +353,22 @@ class TestHelperFunctions:
 
     def test_build_context(self):
         """Test context building from chunks."""
-        from app.models import Chunk, File
+        from unittest.mock import MagicMock
 
-        chunks_with_files = [
-            (
-                Chunk(
-                    id=uuid.uuid4(),
-                    file_id=uuid.uuid4(),
-                    chunk_text="First chunk content",
-                    location={"page": 1},
-                    chunk_index=0,
-                ),
-                File(
-                    id=uuid.uuid4(),
-                    folder_id=uuid.uuid4(),
-                    google_file_id="file1",
-                    file_name="Document1.pdf",
-                    mime_type="application/pdf",
-                    index_status="indexed",
-                ),
-                0.95,
-            ),
-            (
-                Chunk(
-                    id=uuid.uuid4(),
-                    file_id=uuid.uuid4(),
-                    chunk_text="Second chunk content",
-                    location={"headings": ["Intro"]},
-                    chunk_index=0,
-                ),
-                File(
-                    id=uuid.uuid4(),
-                    folder_id=uuid.uuid4(),
-                    google_file_id="file2",
-                    file_name="Document2.pdf",
-                    mime_type="application/vnd.google-apps.document",
-                    index_status="indexed",
-                ),
-                0.85,
-            ),
-        ]
+        # build_context expects objects with location, file_name, and chunk_text attributes
+        chunk1 = MagicMock()
+        chunk1.location = {"page": 1}
+        chunk1.file_name = "Document1.pdf"
+        chunk1.chunk_text = "First chunk content"
 
-        context = build_context(chunks_with_files)
+        chunk2 = MagicMock()
+        chunk2.location = {"headings": ["Intro"]}
+        chunk2.file_name = "Document2.pdf"
+        chunk2.chunk_text = "Second chunk content"
+
+        chunks = [chunk1, chunk2]
+
+        context = build_context(chunks)
 
         assert "[1] From 'Document1.pdf' (Page 1):" in context
         assert "First chunk content" in context

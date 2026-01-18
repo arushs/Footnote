@@ -11,7 +11,7 @@ from app.services.file.chunking import DocumentChunk
 @pytest.mark.asyncio
 async def test_generate_chunk_contexts_success():
     """Test successful parallel context generation."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         # Setup mock client
         mock_client = MagicMock()
         mock_response = MagicMock()
@@ -19,7 +19,7 @@ async def test_generate_chunk_contexts_success():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Test chunk content", location={}, chunk_index=0)]
         # Document must be >500 chars to trigger context generation
@@ -37,7 +37,7 @@ async def test_generate_chunk_contexts_success():
 @pytest.mark.asyncio
 async def test_generate_chunk_contexts_multiple_chunks():
     """Test context generation for multiple chunks in parallel."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         # Return different contexts for each call
         call_count = 0
@@ -52,7 +52,7 @@ async def test_generate_chunk_contexts_multiple_chunks():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [
             DocumentChunk(text="First chunk", location={}, chunk_index=0),
@@ -72,7 +72,7 @@ async def test_generate_chunk_contexts_multiple_chunks():
 @pytest.mark.asyncio
 async def test_short_document_skips_context():
     """Test that short documents skip context generation entirely."""
-    from app.worker import _generate_chunk_contexts
+    from app.tasks.indexing import _generate_chunk_contexts
 
     chunks = [DocumentChunk(text="Short chunk", location={}, chunk_index=0)]
     short_document = "This is a short document"  # < 500 chars
@@ -86,12 +86,12 @@ async def test_short_document_skips_context():
 @pytest.mark.asyncio
 async def test_api_failure_falls_back_to_original():
     """Test graceful fallback when API fails."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Original text", location={}, chunk_index=0)]
         long_document = "A" * 600
@@ -105,7 +105,7 @@ async def test_api_failure_falls_back_to_original():
 @pytest.mark.asyncio
 async def test_partial_failure_preserves_successful_contexts():
     """Test that partial API failures don't affect successful context generation."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         call_count = 0
 
@@ -121,7 +121,7 @@ async def test_partial_failure_preserves_successful_contexts():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [
             DocumentChunk(text="First", location={}, chunk_index=0),
@@ -146,7 +146,7 @@ async def test_partial_failure_preserves_successful_contexts():
 @pytest.mark.asyncio
 async def test_long_document_truncation():
     """Test that very long documents are truncated."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
 
         captured_content = None
@@ -161,7 +161,7 @@ async def test_long_document_truncation():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         # Create a document longer than 6000 chars
@@ -179,7 +179,7 @@ async def test_long_document_truncation():
 @pytest.mark.asyncio
 async def test_generate_single_context_success():
     """Test the single context generation function."""
-    with patch("app.worker.settings") as mock_settings:
+    with patch("app.tasks.indexing.settings") as mock_settings:
         mock_settings.claude_fast_model = "claude-3-haiku-20240307"
 
         mock_client = MagicMock()
@@ -187,7 +187,7 @@ async def test_generate_single_context_success():
         mock_response.content = [MagicMock(text="  Generated context.  ")]
         mock_client.messages.create = AsyncMock(return_value=mock_response)
 
-        from app.worker import _generate_single_context
+        from app.tasks.indexing import _generate_single_context
 
         result = await _generate_single_context(
             client=mock_client,
@@ -203,7 +203,7 @@ async def test_generate_single_context_success():
 @pytest.mark.asyncio
 async def test_empty_chunks_list():
     """Test handling of empty chunks list."""
-    from app.worker import _generate_chunk_contexts
+    from app.tasks.indexing import _generate_chunk_contexts
 
     results = await _generate_chunk_contexts("test.pdf", "A" * 600, [])
 
@@ -213,7 +213,7 @@ async def test_empty_chunks_list():
 @pytest.mark.asyncio
 async def test_file_name_included_in_prompt():
     """Test that file name is included in the context prompt."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
 
         captured_content = None
@@ -228,7 +228,7 @@ async def test_file_name_included_in_prompt():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
 
@@ -241,7 +241,7 @@ async def test_file_name_included_in_prompt():
 @pytest.mark.asyncio
 async def test_chunk_text_included_in_prompt():
     """Test that the chunk text is included in the context prompt."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
 
         captured_content = None
@@ -256,7 +256,7 @@ async def test_chunk_text_included_in_prompt():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunk_text = "Revenue grew by 15% in Q4 compared to the previous quarter."
         chunks = [DocumentChunk(text=chunk_text, location={}, chunk_index=0)]
@@ -270,7 +270,7 @@ async def test_chunk_text_included_in_prompt():
 @pytest.mark.asyncio
 async def test_document_excerpt_included_in_prompt():
     """Test that document excerpt is included in the context prompt."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
 
         captured_content = None
@@ -285,7 +285,7 @@ async def test_document_excerpt_included_in_prompt():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         document_text = "This is the start of our financial report. " * 50  # ~2500 chars
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
@@ -299,14 +299,14 @@ async def test_document_excerpt_included_in_prompt():
 @pytest.mark.asyncio
 async def test_context_format_with_newlines():
     """Test that context is prepended with proper formatting (two newlines)."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="This is context about the chunk.")]
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         original_text = "Original chunk content here."
         chunks = [DocumentChunk(text=original_text, location={}, chunk_index=0)]
@@ -321,7 +321,7 @@ async def test_context_format_with_newlines():
 @pytest.mark.asyncio
 async def test_concurrent_limit_respected():
     """Test that max_concurrent limit is respected."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
 
         concurrent_calls = 0
@@ -340,7 +340,7 @@ async def test_concurrent_limit_respected():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         # Create 10 chunks to process
         chunks = [DocumentChunk(text=f"Chunk {i}", location={}, chunk_index=i) for i in range(10)]
@@ -356,8 +356,8 @@ async def test_concurrent_limit_respected():
 async def test_uses_correct_model():
     """Test that the correct model (claude_fast_model) is used."""
     with (
-        patch("app.worker.get_anthropic_client") as mock_get_client,
-        patch("app.worker.settings") as mock_settings,
+        patch("app.tasks.indexing.get_anthropic_client") as mock_get_client,
+        patch("app.tasks.indexing.settings") as mock_settings,
     ):
         mock_settings.claude_fast_model = "claude-3-haiku-20240307"
 
@@ -374,7 +374,7 @@ async def test_uses_correct_model():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         await _generate_chunk_contexts("doc.pdf", "A" * 600, chunks)
@@ -385,7 +385,7 @@ async def test_uses_correct_model():
 @pytest.mark.asyncio
 async def test_temperature_is_zero():
     """Test that temperature is set to 0 for deterministic output."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         captured_temperature = None
 
@@ -399,7 +399,7 @@ async def test_temperature_is_zero():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         await _generate_chunk_contexts("doc.pdf", "A" * 600, chunks)
@@ -410,7 +410,7 @@ async def test_temperature_is_zero():
 @pytest.mark.asyncio
 async def test_max_tokens_is_limited():
     """Test that max_tokens is limited to prevent excessive output."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         captured_max_tokens = None
 
@@ -424,7 +424,7 @@ async def test_max_tokens_is_limited():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         await _generate_chunk_contexts("doc.pdf", "A" * 600, chunks)
@@ -436,7 +436,7 @@ async def test_max_tokens_is_limited():
 @pytest.mark.asyncio
 async def test_boundary_document_length_499():
     """Test document with exactly 499 chars skips context."""
-    from app.worker import _generate_chunk_contexts
+    from app.tasks.indexing import _generate_chunk_contexts
 
     chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
     document = "A" * 499  # Just under the threshold
@@ -449,14 +449,14 @@ async def test_boundary_document_length_499():
 @pytest.mark.asyncio
 async def test_boundary_document_length_500():
     """Test document with exactly 500 chars generates context."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Context.")]
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         document = "A" * 500  # Exactly at threshold
@@ -470,7 +470,7 @@ async def test_boundary_document_length_500():
 @pytest.mark.asyncio
 async def test_boundary_document_length_6000():
     """Test document with exactly 6000 chars is not truncated."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         captured_content = None
 
@@ -484,7 +484,7 @@ async def test_boundary_document_length_6000():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         document = "A" * 6000  # Exactly at truncation limit
@@ -498,7 +498,7 @@ async def test_boundary_document_length_6000():
 @pytest.mark.asyncio
 async def test_boundary_document_length_6001():
     """Test document with 6001 chars is truncated."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         captured_content = None
 
@@ -512,7 +512,7 @@ async def test_boundary_document_length_6001():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Chunk", location={}, chunk_index=0)]
         document = "A" * 6001  # Just over truncation limit
@@ -526,7 +526,7 @@ async def test_boundary_document_length_6001():
 @pytest.mark.asyncio
 async def test_preserves_chunk_order():
     """Test that chunk order is preserved in results."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         call_order = []
 
@@ -544,7 +544,7 @@ async def test_preserves_chunk_order():
         mock_client.messages.create = mock_create
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [
             DocumentChunk(text=f"Chunk {i} content", location={}, chunk_index=i) for i in range(5)
@@ -561,14 +561,14 @@ async def test_preserves_chunk_order():
 @pytest.mark.asyncio
 async def test_handles_unicode_content():
     """Test handling of unicode characters in document and chunks."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Context with émojis 🎉")]
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         unicode_text = "日本語テキスト with émojis 🎉 and symbols €£¥"
         chunks = [DocumentChunk(text=unicode_text, location={}, chunk_index=0)]
@@ -585,14 +585,14 @@ async def test_handles_unicode_content():
 @pytest.mark.asyncio
 async def test_handles_empty_context_response():
     """Test handling when LLM returns empty string."""
-    with patch("app.worker.get_anthropic_client") as mock_get_client:
+    with patch("app.tasks.indexing.get_anthropic_client") as mock_get_client:
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="   ")]  # Whitespace only
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.worker import _generate_chunk_contexts
+        from app.tasks.indexing import _generate_chunk_contexts
 
         chunks = [DocumentChunk(text="Original", location={}, chunk_index=0)]
 
