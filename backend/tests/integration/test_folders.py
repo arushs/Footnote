@@ -1,12 +1,13 @@
 """Integration tests for folder management routes."""
 
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import File, Folder, IndexingJob
 
@@ -216,3 +217,83 @@ class TestGetFolderStatus:
         response = await auth_client.get(f"/api/folders/{uuid.uuid4()}/status")
 
         assert response.status_code == 404
+
+
+class TestFolderLastSyncedAt:
+    """Tests for folder last_synced_at field."""
+
+    @pytest.fixture
+    async def synced_folder(self, db_session: AsyncSession, test_user) -> Folder:
+        """Create a folder with last_synced_at set."""
+        folder = Folder(
+            id=uuid.uuid4(),
+            user_id=test_user.id,
+            google_folder_id="synced-folder-id",
+            folder_name="Synced Folder",
+            index_status="ready",
+            files_total=3,
+            files_indexed=3,
+            last_synced_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+        db_session.add(folder)
+        await db_session.flush()
+        return folder
+
+    @pytest.mark.asyncio
+    async def test_list_folders_includes_last_synced_at(
+        self, auth_client: AsyncClient, synced_folder: Folder
+    ):
+        """Test that list folders returns last_synced_at field."""
+        response = await auth_client.get("/api/folders")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["folders"]) == 1
+        folder_data = data["folders"][0]
+        assert "last_synced_at" in folder_data
+        assert folder_data["last_synced_at"] is not None
+        # Verify it's a valid ISO format datetime
+        datetime.fromisoformat(folder_data["last_synced_at"].replace("Z", "+00:00"))
+
+    @pytest.mark.asyncio
+    async def test_get_folder_includes_last_synced_at(
+        self, auth_client: AsyncClient, synced_folder: Folder
+    ):
+        """Test that get folder returns last_synced_at field."""
+        response = await auth_client.get(f"/api/folders/{synced_folder.id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_synced_at" in data
+        assert data["last_synced_at"] is not None
+
+    @pytest.mark.asyncio
+    async def test_folder_without_sync_returns_null_last_synced_at(
+        self, auth_client: AsyncClient, test_folder: Folder
+    ):
+        """Test that folder without sync has null last_synced_at."""
+        response = await auth_client.get(f"/api/folders/{test_folder.id}")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_synced_at" in data
+        assert data["last_synced_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_create_folder_returns_null_last_synced_at(
+        self, auth_client: AsyncClient, mock_drive_service
+    ):
+        """Test that newly created folder has null last_synced_at."""
+        with patch("app.routes.folders.DriveService", return_value=mock_drive_service):
+            response = await auth_client.post(
+                "/api/folders",
+                json={
+                    "google_folder_id": "new-folder-id",
+                    "folder_name": "New Folder",
+                },
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "last_synced_at" in data
+        assert data["last_synced_at"] is None

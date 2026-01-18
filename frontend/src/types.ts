@@ -34,6 +34,7 @@ export interface Folder {
   index_status: string
   files_total: number
   files_indexed: number
+  last_synced_at: string | null
 }
 
 // Agent Status (for agent mode progress)
