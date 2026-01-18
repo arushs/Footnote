@@ -110,6 +110,7 @@ def build_google_drive_url(google_file_id: str) -> str:
 async def retrieve_chunks(
     db: AsyncSession,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     query_embedding: list[float],
     top_k: int = INITIAL_RETRIEVAL_K,
 ) -> list[tuple[Chunk, File, float]]:
@@ -132,6 +133,7 @@ async def retrieve_chunks(
         FROM chunks c
         JOIN files f ON c.file_id = f.id
         WHERE f.folder_id = :folder_id
+          AND c.user_id = :user_id
           AND c.chunk_embedding IS NOT NULL
         ORDER BY c.chunk_embedding <=> CAST(:embedding AS vector)
         LIMIT :top_k
@@ -142,6 +144,7 @@ async def retrieve_chunks(
         {
             "embedding": embedding_str,
             "folder_id": folder_id,
+            "user_id": str(user_id),
             "top_k": top_k,
         },
     )
@@ -384,6 +387,7 @@ async def chat(
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder_uuid,
+            user_id=session.user_id,
             conversation=conversation,
             user_message=request.message,
             folder_name=folder.folder_name,
@@ -397,6 +401,7 @@ async def chat(
         rag_generator = standard_rag(
             db=db,
             folder_id=folder_uuid,
+            user_id=session.user_id,
             conversation=conversation,
             user_message=request.message,
         )
@@ -762,6 +767,7 @@ async def chat_in_conversation(
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder.id,
+            user_id=session.user_id,
             conversation=conversation,
             user_message=request.message,
             folder_name=folder.folder_name,
@@ -775,6 +781,7 @@ async def chat_in_conversation(
         rag_generator = standard_rag(
             db=db,
             folder_id=folder.id,
+            user_id=session.user_id,
             conversation=conversation,
             user_message=request.message,
         )

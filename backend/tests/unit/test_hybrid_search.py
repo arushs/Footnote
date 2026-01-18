@@ -256,7 +256,7 @@ class TestKeywordSearch:
         mock_result.fetchall.return_value = [MagicMock(chunk_id=chunk_id, score=0.5)]
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        results = await keyword_search(mock_db, "test query", uuid.uuid4())
+        results = await keyword_search(mock_db, "test query", uuid.uuid4(), uuid.uuid4())
 
         assert len(results) == 1
         assert results[0][0] == chunk_id
@@ -276,7 +276,7 @@ class TestKeywordSearch:
         ]
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        results = await keyword_search(mock_db, "test query", uuid.uuid4())
+        results = await keyword_search(mock_db, "test query", uuid.uuid4(), uuid.uuid4())
 
         assert len(results) == 2
         assert results[0][1] == 1.0  # Max score normalized to 1
@@ -290,7 +290,7 @@ class TestKeywordSearch:
         mock_result.fetchall.return_value = []
         mock_db.execute = AsyncMock(return_value=mock_result)
 
-        results = await keyword_search(mock_db, "nonexistent query", uuid.uuid4())
+        results = await keyword_search(mock_db, "nonexistent query", uuid.uuid4(), uuid.uuid4())
 
         assert results == []
 
@@ -322,7 +322,7 @@ class TestVectorSearchWithScores:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         embedding = [0.1] * 768
-        results = await vector_search_with_scores(mock_db, embedding, uuid.uuid4())
+        results = await vector_search_with_scores(mock_db, embedding, uuid.uuid4(), uuid.uuid4())
 
         assert len(results) == 1
         assert results[0][0] == chunk_id
@@ -352,7 +352,7 @@ class TestVectorSearchWithScores:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         embedding = [0.1] * 768
-        results = await vector_search_with_scores(mock_db, embedding, uuid.uuid4())
+        results = await vector_search_with_scores(mock_db, embedding, uuid.uuid4(), uuid.uuid4())
 
         assert results[0][1] == 0.0  # Clamped to 0
 
@@ -371,7 +371,7 @@ class TestHybridSearchIntegration:
         with patch("app.services.hybrid_search.embed_query") as mock_embed:
             mock_embed.return_value = [0.1] * 768
 
-            await hybrid_search(mock_db, "test query", uuid.uuid4())
+            await hybrid_search(mock_db, "test query", uuid.uuid4(), uuid.uuid4())
 
             mock_embed.assert_called_once_with("test query")
             # Should have called execute twice (keyword + vector)
@@ -409,7 +409,7 @@ class TestHybridSearchIntegration:
         with patch("app.services.hybrid_search.embed_query") as mock_embed:
             mock_embed.return_value = [0.1] * 768
 
-            results = await hybrid_search(mock_db, "test query", uuid.uuid4())
+            results = await hybrid_search(mock_db, "test query", uuid.uuid4(), uuid.uuid4())
 
             assert len(results) == 1
             assert results[0].chunk_id == chunk_id
@@ -436,6 +436,7 @@ class TestHybridSearchIntegration:
             await hybrid_retrieve_and_rerank(
                 mock_db,
                 "test query",
+                uuid.uuid4(),
                 uuid.uuid4(),
                 initial_top_k=30,
                 final_top_k=10,
