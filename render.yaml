@@ -39,7 +39,6 @@ services:
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerTarget: production
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
@@ -77,7 +76,6 @@ services:
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    dockerTarget: production
     dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=8 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
