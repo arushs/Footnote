@@ -127,9 +127,63 @@ async def _generate_chunk_contexts(
     return results
 
 
+async def _refresh_session_token(session: Session, db) -> Session | None:
+    """Refresh an expired access token using the refresh token."""
+    from datetime import UTC, datetime, timedelta
+
+    if not session.refresh_token:
+        return None
+
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "client_id": settings.google_client_id,
+                "client_secret": settings.google_client_secret,
+                "refresh_token": session.refresh_token,
+                "grant_type": "refresh_token",
+            },
+        )
+
+        if token_response.status_code != 200:
+            logger.warning(f"Failed to refresh token for session {session.id}: {token_response.text}")
+            return None
+
+        tokens = token_response.json()
+        new_access_token = tokens["access_token"]
+        new_expires_at = datetime.now(UTC) + timedelta(seconds=tokens.get("expires_in", 3600))
+        new_refresh_token = tokens.get("refresh_token", session.refresh_token)
+
+        # Update session in database
+        await db.execute(
+            text("""
+                UPDATE sessions
+                SET access_token = :access_token,
+                    refresh_token = :refresh_token,
+                    expires_at = :expires_at
+                WHERE id = :session_id
+            """),
+            {
+                "access_token": new_access_token,
+                "refresh_token": new_refresh_token,
+                "expires_at": new_expires_at,
+                "session_id": str(session.id),
+            },
+        )
+        await db.commit()
+
+        # Return updated session
+        session.access_token = new_access_token
+        session.refresh_token = new_refresh_token
+        session.expires_at = new_expires_at
+        logger.info(f"Successfully refreshed token for session {session.id}")
+        return session
+
+
 async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
-    """Get a valid user session for accessing files in a folder."""
+    """Get a valid user session for accessing files in a folder, refreshing if needed."""
     async with get_task_session() as db:
+        # First try to get a non-expired session
         result = await db.execute(
             text("""
                 SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
@@ -151,6 +205,34 @@ async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
                 refresh_token=row.refresh_token,
                 expires_at=row.expires_at,
             )
+
+        # No valid session found, try to get an expired one with a refresh token
+        result = await db.execute(
+            text("""
+                SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
+                FROM sessions s
+                JOIN folders f ON f.user_id = s.user_id
+                WHERE f.id = :folder_id
+                  AND s.refresh_token IS NOT NULL
+                ORDER BY s.expires_at DESC
+                LIMIT 1
+            """),
+            {"folder_id": str(folder_id)},
+        )
+        row = result.first()
+        if row:
+            session = Session(
+                id=row.id,
+                user_id=row.user_id,
+                access_token=row.access_token,
+                refresh_token=row.refresh_token,
+                expires_at=row.expires_at,
+            )
+            # Try to refresh the token
+            refreshed = await _refresh_session_token(session, db)
+            if refreshed:
+                return refreshed
+
         return None
 
 
@@ -241,8 +323,13 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
     6. Generate chunk embeddings
     7. Store everything in database
     """
-    file_uuid = uuid.UUID(file_id)
-    folder_uuid = uuid.UUID(folder_id)
+    # Validate UUIDs early - fail permanently on invalid IDs
+    try:
+        file_uuid = uuid.UUID(file_id)
+        folder_uuid = uuid.UUID(folder_id)
+        uuid.UUID(user_id)  # Validate but don't store
+    except (ValueError, TypeError) as e:
+        raise PermanentIndexingError(f"Invalid UUID parameter: {e}") from e
 
     logger.info(f"Processing file {file_id} in folder {folder_id}")
 
