@@ -30,6 +30,7 @@ class FolderResponse(BaseModel):
     index_status: str
     files_total: int
     files_indexed: int
+    last_synced_at: str | None = None
 
 
 class FolderStatus(BaseModel):
@@ -60,6 +61,7 @@ async def list_folders(
                 index_status=f.index_status,
                 files_total=f.files_total,
                 files_indexed=f.files_indexed,
+                last_synced_at=f.last_synced_at.isoformat() if f.last_synced_at else None,
             )
             for f in folders
         ]
@@ -134,6 +136,7 @@ async def create_folder(
         index_status=new_folder.index_status,
         files_total=new_folder.files_total,
         files_indexed=new_folder.files_indexed,
+        last_synced_at=new_folder.last_synced_at.isoformat() if new_folder.last_synced_at else None,
     )
 
 
@@ -167,6 +170,7 @@ async def get_folder(
         index_status=folder.index_status,
         files_total=folder.files_total,
         files_indexed=folder.files_indexed,
+        last_synced_at=folder.last_synced_at.isoformat() if folder.last_synced_at else None,
     )
 
 

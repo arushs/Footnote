@@ -12,6 +12,10 @@ describe('useFolderStatus', () => {
     id: 'folder-1',
     google_folder_id: 'google-123',
     folder_name: 'Test Folder',
+    index_status: 'ready',
+    files_total: 10,
+    files_indexed: 10,
+    last_synced_at: '2024-01-15T10:30:00Z',
   }
 
   const mockStatusReady: FolderStatus = {
