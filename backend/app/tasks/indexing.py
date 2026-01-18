@@ -9,7 +9,7 @@ from sqlalchemy import text
 
 from app.celery_app import celery_app
 from app.config import settings
-from app.database import async_session
+from app.database import get_task_session
 from app.exceptions import (
     PERMANENT_ERRORS,
     TRANSIENT_ERRORS,
@@ -47,35 +47,47 @@ async def _generate_single_context(
     file_name: str,
     document_excerpt: str,
     chunk_text: str,
+    max_retries: int = 3,
 ) -> str | None:
-    """Generate context for a single chunk with retry."""
-    try:
-        response = await client.messages.create(
-            model=settings.claude_fast_model,
-            max_tokens=100,
-            temperature=0.0,
-            messages=[
-                {
-                    "role": "user",
-                    "content": CONTEXT_PROMPT.format(
-                        file_name=file_name,
-                        document_excerpt=document_excerpt,
-                        chunk_text=chunk_text,
-                    ),
-                }
-            ],
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        logger.warning(f"Context generation failed: {e}")
-        return None
+    """Generate context for a single chunk with retry and rate limit handling."""
+    import anthropic
+
+    for attempt in range(max_retries):
+        try:
+            response = await client.messages.create(
+                model=settings.claude_fast_model,
+                max_tokens=100,
+                temperature=0.0,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": CONTEXT_PROMPT.format(
+                            file_name=file_name,
+                            document_excerpt=document_excerpt,
+                            chunk_text=chunk_text,
+                        ),
+                    }
+                ],
+            )
+            return response.content[0].text.strip()
+        except anthropic.RateLimitError:
+            wait_time = (2**attempt) * 2  # 2s, 4s, 8s
+            logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
+            await asyncio.sleep(wait_time)
+            if attempt == max_retries - 1:
+                logger.error(f"Rate limit retries exhausted for chunk in {file_name}")
+                return None
+        except Exception as e:
+            logger.warning(f"Context generation failed: {e}")
+            return None
+    return None
 
 
 async def _generate_chunk_contexts(
     file_name: str,
     full_document: str,
     chunks: list[DocumentChunk],
-    max_concurrent: int = 5,
+    max_concurrent: int = 2,
 ) -> list[str]:
     """Generate contexts for all chunks in parallel with bounded concurrency."""
     if len(full_document) < 500:
@@ -107,7 +119,7 @@ async def _generate_chunk_contexts(
 
 async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
     """Get a valid user session for accessing files in a folder."""
-    async with async_session() as db:
+    async with get_task_session() as db:
         result = await db.execute(
             text("""
                 SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
@@ -134,7 +146,7 @@ async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
 
 async def _get_file_info(file_id: uuid.UUID) -> File | None:
     """Get file information from the database."""
-    async with async_session() as db:
+    async with get_task_session() as db:
         result = await db.execute(
             text("""
                 SELECT id, folder_id, google_file_id, file_name, mime_type,
@@ -161,7 +173,7 @@ async def _get_file_info(file_id: uuid.UUID) -> File | None:
 
 async def _update_file_status(file_id: uuid.UUID, status: str) -> None:
     """Update file index status."""
-    async with async_session() as db:
+    async with get_task_session() as db:
         await db.execute(
             text("UPDATE files SET index_status = :status WHERE id = :file_id"),
             {"status": status, "file_id": str(file_id)},
@@ -171,7 +183,7 @@ async def _update_file_status(file_id: uuid.UUID, status: str) -> None:
 
 async def _update_folder_progress(folder_id: uuid.UUID) -> None:
     """Update folder indexing progress."""
-    async with async_session() as db:
+    async with get_task_session() as db:
         result = await db.execute(
             text("""
                 SELECT
@@ -279,19 +291,22 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
             await _update_folder_progress(folder_uuid)
             return {"status": "completed", "file_id": file_id, "chunks": 0}
 
-        # Step 5: Generate contextualized chunk texts
-        full_document = "\n\n".join(b.text for b in document.blocks)
-        chunk_texts = await _generate_chunk_contexts(
-            file_name=file_info.file_name,
-            full_document=full_document,
-            chunks=chunks,
-        )
+        # Step 5: Generate chunk texts (with optional context)
+        if settings.contextual_chunking_enabled:
+            full_document = "\n\n".join(b.text for b in document.blocks)
+            chunk_texts = await _generate_chunk_contexts(
+                file_name=file_info.file_name,
+                full_document=full_document,
+                chunks=chunks,
+            )
+        else:
+            chunk_texts = [chunk.text for chunk in chunks]
 
         # Step 6: Generate chunk embeddings in batches
         chunk_embeddings = await embed_documents_batch(chunk_texts)
 
         # Step 7: Store everything in database
-        async with async_session() as db:
+        async with get_task_session() as db:
             # Update file with preview and embedding
             await db.execute(
                 text("""
