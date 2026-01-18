@@ -1,6 +1,7 @@
 import { Navigate } from 'react-router-dom'
 import { Loader2, FolderOpen } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { apiUrl } from '../config/api'
 
 export function LandingPage() {
   const { user, loading } = useAuth()
@@ -31,7 +32,7 @@ export function LandingPage() {
         </div>
 
         <a
-          href="/api/auth/google"
+          href={apiUrl('/api/auth/google')}
           className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           <svg className="h-5 w-5" viewBox="0 0 24 24">

@@ -4,6 +4,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { useNavigate } from 'react-router-dom'
 import { useGooglePicker } from '../../hooks'
 import { addToast } from '../ui/toast'
+import { apiUrl } from '../../config/api'
 import { cn } from '../../lib/utils'
 
 interface AddFolderDropdownProps {
@@ -30,7 +31,7 @@ export function AddFolderDropdown({ className }: AddFolderDropdownProps) {
       if (!result) return
 
       setIsCreating(true)
-      const response = await fetch('/api/folders', {
+      const response = await fetch(apiUrl('/api/folders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

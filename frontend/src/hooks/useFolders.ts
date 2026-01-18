@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useGooglePicker } from './useGooglePicker'
 import { addToast } from '../components/ui/toast'
+import { apiUrl } from '../config/api'
 import type { Folder } from '../types'
 
 interface UseFoldersOptions {
@@ -31,7 +32,7 @@ export function useFolders(options: UseFoldersOptions = {}): UseFoldersReturn {
   const fetchFolders = useCallback(async (signal?: AbortSignal) => {
     try {
       setIsLoading(true)
-      const response = await fetch('/api/folders', {
+      const response = await fetch(apiUrl('/api/folders'), {
         credentials: 'include',
         signal,
       })
@@ -87,7 +88,7 @@ export function useFolders(options: UseFoldersOptions = {}): UseFoldersReturn {
       if (!result) return
 
       setIsCreating(true)
-      const response = await fetch('/api/folders', {
+      const response = await fetch(apiUrl('/api/folders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
