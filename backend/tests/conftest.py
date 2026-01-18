@@ -98,7 +98,11 @@ async def db_session(setup_database) -> AsyncGenerator[AsyncSession, None]:
     # Truncate all tables to start fresh for each test
     async with test_engine.begin() as conn:
         # Order matters due to foreign key constraints - truncate in reverse dependency order
-        await conn.execute(text("TRUNCATE messages, conversations, chunks, indexing_jobs, files, folders, sessions, users RESTART IDENTITY CASCADE"))
+        await conn.execute(
+            text(
+                "TRUNCATE messages, conversations, chunks, indexing_jobs, files, folders, sessions, users RESTART IDENTITY CASCADE"
+            )
+        )
 
     async with test_async_session() as session:
         yield session
