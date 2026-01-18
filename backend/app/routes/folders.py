@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,10 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import File, Folder, IndexingJob
+from app.models import File, Folder
 from app.models import Session as DbSession
 from app.routes.auth import get_current_session
 from app.services.drive import DriveService
+from app.tasks.indexing import process_indexing_job
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -92,7 +96,8 @@ async def create_folder(
 
     new_folder.files_total = len(files)
 
-    # Create file records and indexing jobs
+    # Create file records
+    file_records = []
     for file_meta in files:
         file_record = File(
             folder_id=new_folder.id,
@@ -102,15 +107,25 @@ async def create_folder(
             index_status="pending",
         )
         db.add(file_record)
-        await db.flush()
+        file_records.append(file_record)
 
-        # Create indexing job for this file
-        job = IndexingJob(
-            folder_id=new_folder.id,
-            file_id=file_record.id,
-            status="pending",
-        )
-        db.add(job)
+    # Commit FIRST - file records guaranteed to exist
+    await db.commit()
+
+    # Dispatch Celery tasks AFTER commit succeeds
+    dispatch_errors = []
+    for file_record in file_records:
+        try:
+            process_indexing_job.delay(
+                file_id=str(file_record.id),
+                folder_id=str(new_folder.id),
+                user_id=str(session.user_id),
+            )
+        except Exception as e:
+            dispatch_errors.append((file_record.id, str(e)))
+
+    if dispatch_errors:
+        logger.error(f"Failed to dispatch {len(dispatch_errors)} tasks: {dispatch_errors}")
 
     return FolderResponse(
         id=str(new_folder.id),

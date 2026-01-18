@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: footnote-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   db:
     image: pgvector/pgvector:pg16
     container_name: footnote-db
@@ -26,6 +40,7 @@ services:
     container_name: footnote-backend
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URI: http://localhost:8000/api/auth/google/callback
@@ -40,6 +55,8 @@ services:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -66,16 +83,28 @@ services:
     container_name: footnote-worker
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      TOGETHER_API_KEY: ${TOGETHER_API_KEY}
+      FIREWORKS_API_KEY: ${FIREWORKS_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uv run python -m app.worker
+    command: >
+      uv run celery -A app.celery_app worker
+      --loglevel=info
+      --concurrency=20
+      --pool=threads
+      -Q default,indexing
+      --without-gossip
+      --without-mingle
 
 volumes:
   postgres_data:
+  redis_data:

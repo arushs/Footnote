@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://localhost/talk_to_folder"
 
+    # Redis (Celery broker)
+    redis_url: str = "redis://localhost:6379/0"
+
     # Google OAuth
     google_client_id: str = ""
     google_client_secret: str = ""

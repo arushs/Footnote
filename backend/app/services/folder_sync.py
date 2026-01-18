@@ -15,8 +15,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Chunk, File, Folder, IndexingJob
+from app.models import Chunk, File, Folder
 from app.services.file.extraction import ExtractionService
+from app.tasks.indexing import process_indexing_job
 
 logger = logging.getLogger(__name__)
 
@@ -95,8 +96,8 @@ async def sync_folder_if_needed(
             if drive_id not in current_file_map:
                 changes["deleted"].append(stored_file)
 
-        # Apply changes
-        await _apply_sync_changes(db, folder, changes)
+        # Apply changes (pass user_id for Celery task dispatch)
+        await _apply_sync_changes(db, folder, changes, str(folder.user_id))
 
         # Update sync timestamp
         folder.last_synced_at = now
@@ -168,13 +169,16 @@ async def _list_drive_folder_async(loop, service, folder_id: str) -> list[dict]:
     return files
 
 
-async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
-    """Apply diff changes to database and queue re-indexing."""
+async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict, user_id: str):
+    """Apply diff changes to database and queue re-indexing via Celery."""
     extraction = ExtractionService()
 
     # Delete removed files (cascade handles chunks via FK)
     for file in changes["deleted"]:
         await db.delete(file)
+
+    # Collect new files to dispatch after commit
+    new_file_records = []
 
     # Queue new files for indexing (skip unsupported types like images)
     for drive_file in changes["added"]:
@@ -191,14 +195,10 @@ async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
             index_status="pending",
         )
         db.add(new_file)
-        await db.flush()  # Get the file ID
+        new_file_records.append(new_file)
 
-        job = IndexingJob(
-            folder_id=folder.id,
-            file_id=new_file.id,
-            status="pending",
-        )
-        db.add(job)
+    # Collect modified files to dispatch after commit
+    modified_file_records = []
 
     # Queue modified files for re-indexing
     for drive_file in changes["modified"]:
@@ -215,7 +215,7 @@ async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
         # Delete old chunks (will be re-created during indexing)
         await db.execute(delete(Chunk).where(Chunk.file_id == file.id))
 
-        # Update file record and queue re-indexing
+        # Update file record
         file.modified_time = datetime.fromisoformat(
             drive_file["modifiedTime"].replace("Z", "+00:00")
         )
@@ -224,12 +224,22 @@ async def _apply_sync_changes(db: AsyncSession, folder: Folder, changes: dict):
         file.file_preview = None
         file.search_vector = None
 
-        # Check if job already exists for this file
-        existing_job = await db.execute(select(IndexingJob).where(IndexingJob.file_id == file.id))
-        if not existing_job.scalar_one_or_none():
-            job = IndexingJob(
-                folder_id=folder.id,
-                file_id=file.id,
-                status="pending",
+        modified_file_records.append(file)
+
+    # Flush to get IDs for new files
+    await db.flush()
+
+    # Dispatch Celery tasks for new and modified files
+    dispatch_errors = []
+    for file_record in new_file_records + modified_file_records:
+        try:
+            process_indexing_job.delay(
+                file_id=str(file_record.id),
+                folder_id=str(folder.id),
+                user_id=user_id,
             )
-            db.add(job)
+        except Exception as e:
+            dispatch_errors.append((file_record.id, str(e)))
+
+    if dispatch_errors:
+        logger.error(f"Failed to dispatch {len(dispatch_errors)} sync tasks: {dispatch_errors}")
