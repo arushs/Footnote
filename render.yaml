@@ -12,6 +12,7 @@ services:
     name: footnote-redis
     plan: starter
     ipAllowList: []
+
   # Frontend - Static React Application
   - type: web
     name: footnote-web
@@ -31,13 +32,14 @@ services:
       - key: VITE_API_URL
         value: https://footnote-api.onrender.com
 
-  # Backend - FastAPI Web Service
+  # Backend - FastAPI Web Service (Docker)
   - type: web
     name: footnote-api
-    runtime: python
+    runtime: docker
     plan: starter
-    buildCommand: pip install uv && cd backend && uv sync
-    startCommand: cd backend && uv run uvicorn main:app --host 0.0.0.0 --port $PORT
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerTarget: production
     healthCheckPath: /api/health
     envVars:
       - key: DATABASE_URL
@@ -68,20 +70,15 @@ services:
       - key: CORS_ORIGINS
         value: '["https://footnote-web.onrender.com"]'
 
-  # Celery Worker - Background Indexing Jobs
+  # Celery Worker - Background Indexing Jobs (Docker)
   - type: worker
     name: footnote-celery-worker
-    runtime: python
+    runtime: docker
     plan: starter
-    buildCommand: pip install uv && cd backend && uv sync
-    startCommand: >
-      cd backend && uv run celery -A app.celery_app worker
-      --loglevel=info
-      --concurrency=4
-      --pool=threads
-      -Q celery,indexing
-      --without-gossip
-      --without-mingle
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerTarget: production
+    dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
         fromDatabase:

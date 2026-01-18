@@ -1,40 +1,97 @@
-# Claude Code Context
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Development Commands
+
+### Backend (Python/FastAPI)
+```bash
+# Start all services (db, redis, backend, worker, frontend)
+docker-compose up
+
+# Run backend tests
+cd backend && uv run pytest
+
+# Run a single test
+cd backend && uv run pytest tests/unit/test_hybrid_search.py::test_keyword_search -v
+
+# Lint and format
+cd backend && uv run ruff check . && uv run ruff format .
+
+# Type check
+cd backend && uv run mypy app
+```
+
+### Frontend (React/Vite)
+```bash
+# Run dev server
+cd frontend && npm run dev
+
+# Run tests
+cd frontend && npm test
+
+# Run single test file
+cd frontend && npm test -- src/components/chat/ChatMessage.test.tsx
+
+# E2E tests
+cd frontend && npm run test:e2e
+
+# Lint
+cd frontend && npm run lint
+```
+
+## Architecture Overview
+
+### RAG Pipeline
+
+The app indexes Google Drive folders and enables chat with those documents using a two-stage retrieval system:
+
+1. **Indexing** (Celery worker):
+   - `app/tasks/indexing.py` - Celery task that processes files
+   - Downloads files via Google Drive API → Extracts text (Google Docs via HTML export, PDFs via Mistral OCR) → Chunks with heading-aware splitting → Generates embeddings via Fireworks API → Stores in PostgreSQL with pgvector
+
+2. **Retrieval** (`app/services/hybrid_search.py`):
+   - Hybrid search combining: vector similarity (60%), keyword/tsvector (20%), recency decay (20%)
+   - Optional reranking via Fireworks for final results
+
+3. **Chat Modes** (`app/services/chat/`):
+   - `rag.py` - Simple RAG: single search → format context → stream response
+   - `agent.py` - Agentic RAG: Claude tool-use loop with `search_folder`, `get_file_chunks`, `get_file` tools. Iterates up to 10x before synthesizing
+
+### Key Data Flow
+
+```
+Google Drive → DriveService → ExtractionService → chunk_document() → embed_documents_batch()
+                                                                              ↓
+User Query → hybrid_search() → rerank() → Claude API → SSE streaming response
+```
+
+### Database Schema
+
+- `users`, `sessions` - Google OAuth
+- `folders` - Indexed folders with sync state
+- `files` - File metadata, preview, file-level embedding
+- `chunks` - Text chunks with embeddings (768-dim Nomic) and tsvector for hybrid search
+- `conversations`, `messages` - Chat history with citations stored as JSONB
 
 ## Important Directories
 
-When troubleshooting issues or understanding the codebase, always check:
-
 ### `docs/solutions/`
-Contains documented solutions to problems that have been solved. Organized by category:
+**Check here first** when encountering errors. Contains documented solutions organized by category:
 - `database-issues/` - PostgreSQL, migrations, schema problems
-- `build-errors/` - Docker, dependency, compilation issues
+- `build-errors/` - Docker, dependency issues
 - `runtime-errors/` - Application crashes, API errors
-- `performance-issues/` - Slow queries, optimization fixes
 
-**Always search here first** when encountering an error - the solution may already be documented.
-
-### `docs/guides/`
-Contains setup guides and best practices:
-- Environment configuration
-- Credential management
-- Development setup
+### Key Files
+- `backend/app/config.py` - All environment variables and settings
+- `backend/app/services/file/embedding.py` - Fireworks API for embeddings
+- `backend/app/celery_app.py` - Celery configuration
+- `database/schema.sql` - Full database schema with indexes
 
 ## Tech Stack
 
-- **Backend**: FastAPI + SQLAlchemy + PostgreSQL (pgvector)
-- **Frontend**: React + Vite + TypeScript
-- **AI**: Fireworks AI (embeddings), Anthropic Claude (generation), Mistral (PDF OCR)
-- **Infrastructure**: Docker Compose
-
-## Common Issues
-
-1. **Database connection errors**: Check `docs/solutions/database-issues/`
-2. **Indexing failures**: Check worker logs with `docker-compose logs worker`
-3. **Cross-platform dependency issues**: Explicit deps in `pyproject.toml` (e.g., jiter)
-
-## Key Files
-
-- `docker-compose.yml` - Service definitions
-- `backend/app/worker.py` - Background indexing worker
-- `backend/pyproject.toml` - Python dependencies
-- `database/schema.sql` - Database schema
+- **Backend**: FastAPI + SQLAlchemy (async) + PostgreSQL (pgvector)
+- **Frontend**: React 18 + Vite + TypeScript + Tailwind + Radix UI
+- **Task Queue**: Celery with Redis broker
+- **AI**: Fireworks (Nomic embeddings), Anthropic Claude (generation), Mistral (PDF OCR)
+- **Deployment**: Docker Compose (dev), Render (prod via `render.yaml`)
