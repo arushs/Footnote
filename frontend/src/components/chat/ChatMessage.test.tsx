@@ -42,16 +42,18 @@ describe('ChatMessage', () => {
     it('should display user styling', () => {
       render(<ChatMessage message={userMessage} />)
 
-      // User messages have different styling (bg-muted/50)
-      const container = screen.getByText('What does the document say about testing?').closest('article.group')
-      expect(container).toHaveClass('bg-muted/50')
+      // User messages are right-aligned bubbles with bg-muted
+      const article = screen.getByLabelText('Your message')
+      expect(article).toHaveClass('justify-end')
+      const bubble = screen.getByText('What does the document say about testing?').closest('div')
+      expect(bubble).toHaveClass('bg-muted')
     })
 
     it('should not show copy button for user messages', () => {
       render(<ChatMessage message={userMessage} />)
 
       // User messages don't have the copy button
-      expect(screen.queryByTitle('Copy message')).not.toBeInTheDocument()
+      expect(screen.queryByTitle('Copy response')).not.toBeInTheDocument()
     })
   })
 
@@ -66,23 +68,22 @@ describe('ChatMessage', () => {
     it('should display assistant styling', () => {
       render(<ChatMessage message={assistantMessage} />)
 
-      // Assistant messages have bg-background
-      const content = screen.getByText(/According to the document/)
-      const container = content.closest('article.group')
-      expect(container).toHaveClass('bg-background')
+      // Assistant messages are left-aligned with group class for hover effects
+      const article = screen.getByLabelText('Assistant response')
+      expect(article).toHaveClass('group')
     })
 
     it('should show copy button for assistant messages', () => {
       render(<ChatMessage message={assistantMessage} />)
 
-      expect(screen.getByTitle('Copy message')).toBeInTheDocument()
+      expect(screen.getByTitle('Copy response')).toBeInTheDocument()
     })
 
     it('should show check icon after copy button is clicked', async () => {
       const user = userEvent.setup()
       render(<ChatMessage message={assistantMessage} />)
 
-      const copyButton = screen.getByTitle('Copy message')
+      const copyButton = screen.getByTitle('Copy response')
 
       // Before click, should show copy icon (not check icon)
       expect(copyButton.querySelector('.lucide-copy')).toBeInTheDocument()
