@@ -1,9 +1,20 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://localhost/talk_to_folder"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def convert_database_url(cls, v: str) -> str:
+        """Convert Render's postgres:// URL to asyncpg format."""
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgresql://") and "+asyncpg" not in v:
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # Redis (Celery broker)
     redis_url: str = "redis://localhost:6379/0"
@@ -21,6 +32,9 @@ class Settings(BaseSettings):
     # AI Models
     claude_model: str = "claude-sonnet-4-5-20250929"  # Main generation model
     claude_fast_model: str = "claude-haiku-4-5-20251001"  # Fast/cheap model for simple tasks
+
+    # Indexing
+    contextual_chunking_enabled: bool = False  # Add context to chunks via LLM (increases API usage)
 
     # Security
     secret_key: str = "dev-secret-key-change-in-production"

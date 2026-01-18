@@ -214,7 +214,7 @@ async def vector_search_with_scores(
                 c.location,
                 f.file_name,
                 f.google_file_id,
-                f.updated_at as file_updated_at,
+                f.modified_time as file_updated_at,
                 1 - (c.chunk_embedding <=> CAST(:query_embedding AS vector)) as similarity
             FROM chunks c
             JOIN files f ON c.file_id = f.id
@@ -304,7 +304,7 @@ async def hybrid_search(
                     c.location,
                     f.file_name,
                     f.google_file_id,
-                    f.updated_at as file_updated_at
+                    f.modified_time as file_updated_at
                 FROM chunks c
                 JOIN files f ON c.file_id = f.id
                 WHERE c.id = ANY(:chunk_ids)

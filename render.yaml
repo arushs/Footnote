@@ -1,7 +1,17 @@
 # Render Blueprint for Talk-to-Folder Application
 # https://render.com/docs/blueprint-spec
+#
+# IMPORTANT: After deploying, enable the pgvector extension on your database:
+# 1. Go to your database in Render Dashboard
+# 2. Go to the "Info" tab and click "Connect" via psql or external tool
+# 3. Run: CREATE EXTENSION IF NOT EXISTS vector;
 
 services:
+  # Redis - Message broker for Celery
+  - type: redis
+    name: talk-to-folder-redis
+    plan: starter
+    ipAllowList: []
   # Frontend - Static React Application
   - type: web
     name: talk-to-folder-web
@@ -67,9 +77,9 @@ services:
     startCommand: >
       cd backend && celery -A app.celery_app worker
       --loglevel=info
-      --concurrency=20
+      --concurrency=4
       --pool=threads
-      -Q default,indexing
+      -Q celery,indexing
       --without-gossip
       --without-mingle
     envVars:
@@ -95,6 +105,5 @@ services:
 
 databases:
   - name: talk-to-folder-db
-    plan: starter
-    postgresMajorVersion: 15
+    plan: basic-256mb  # Options: free, basic-256mb, basic-1gb, basic-4gb, pro-4gb, etc.
     ipAllowList: []

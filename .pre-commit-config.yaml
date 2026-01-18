@@ -1,9 +1,17 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.6
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
+        name: ruff
+        entry: uv run --project backend ruff check --fix
+        language: system
+        types: [python]
         stages: [pre-push]
+        files: ^backend/
       - id: ruff-format
+        name: ruff-format
+        entry: uv run --project backend ruff format
+        language: system
+        types: [python]
         stages: [pre-push]
+        files: ^backend/
