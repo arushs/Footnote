@@ -24,7 +24,7 @@ export function LandingPage() {
           <div className="mx-auto h-16 w-16 rounded-2xl bg-primary flex items-center justify-center">
             <FolderOpen className="h-8 w-8 text-primary-foreground" />
           </div>
-          <h1 className="text-4xl font-bold text-foreground">Talk to a Folder</h1>
+          <h1 className="text-4xl font-bold text-foreground">Footnote</h1>
           <p className="text-lg text-muted-foreground">
             Chat with your Google Drive documents using AI
           </p>

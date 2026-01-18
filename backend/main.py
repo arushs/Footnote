@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Talk to Folder API",
+    title="Footnote API",
     description="RAG API for chatting with Google Drive folders",
     version="0.1.0",
     lifespan=lifespan,

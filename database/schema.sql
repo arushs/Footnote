@@ -1,4 +1,4 @@
--- Talk-to-Folder Database Schema
+-- Footnote Database Schema
 -- PostgreSQL with pgvector extension for vector similarity search
 
 -- Enable pgvector extension
