@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useFolderStatus } from '../useFolderStatus'
-import type { Folder, FolderStatus } from '../../types'
+import { useFolderStatus } from './useFolderStatus'
+import type { Folder, FolderStatus } from '../types'
 
 // Mock fetch
 const mockFetch = vi.fn()
@@ -11,8 +11,7 @@ describe('useFolderStatus', () => {
   const mockFolder: Folder = {
     id: 'folder-1',
     google_folder_id: 'google-123',
-    name: 'Test Folder',
-    created_at: '2024-01-15T10:00:00Z',
+    folder_name: 'Test Folder',
   }
 
   const mockStatusReady: FolderStatus = {
@@ -41,7 +40,7 @@ describe('useFolderStatus', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.useFakeTimers()
+    vi.useFakeTimers({ shouldAdvanceTime: true })
   })
 
   afterEach(() => {
