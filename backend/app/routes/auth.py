@@ -110,6 +110,7 @@ async def google_callback(
         secure=is_production,
         samesite="lax",
         max_age=settings.session_expire_hours * 3600,
+        domain=settings.cookie_domain,  # ".footnote.one" in prod for cross-subdomain
     )
 
     return redirect
@@ -132,7 +133,7 @@ async def logout(
         except ValueError:
             pass  # Invalid UUID, ignore
 
-    response.delete_cookie(key="session_id")
+    response.delete_cookie(key="session_id", domain=settings.cookie_domain)
     return {"message": "Logged out successfully"}
 
 

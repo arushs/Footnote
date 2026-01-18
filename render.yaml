@@ -20,6 +20,8 @@ services:
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     pullRequestPreviewsEnabled: true
+    customDomains:
+      - app.footnote.one
     headers:
       - path: /*
         name: X-Frame-Options
@@ -30,7 +32,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://footnote-api.onrender.com
+        value: https://api.footnote.one
 
   # Backend - FastAPI Web Service
   - type: web
@@ -41,6 +43,8 @@ services:
     startCommand: cd backend && uv run uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     preDeployCommand: cd backend && uv run bin/migrate
+    customDomains:
+      - api.footnote.one
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -56,7 +60,7 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://footnote-api.onrender.com/api/auth/google/callback
+        value: https://api.footnote.one/api/auth/google/callback
       - key: FIREWORKS_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
@@ -66,9 +70,11 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FRONTEND_URL
-        value: https://footnote-web.onrender.com
+        value: https://app.footnote.one
       - key: CORS_ORIGINS
-        value: '["https://footnote-web.onrender.com"]'
+        value: '["https://app.footnote.one"]'
+      - key: COOKIE_DOMAIN
+        value: .footnote.one
 
   # Celery Worker - Background Indexing Jobs
   - type: worker

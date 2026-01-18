@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # Security
     secret_key: str = "dev-secret-key-change-in-production"
     session_expire_hours: int = 24
+    cookie_domain: str | None = (
+        None  # Set to ".footnote.one" in production for cross-subdomain cookies
+    )
 
     # Frontend
     frontend_url: str = "http://localhost:3000"
