@@ -78,7 +78,7 @@ services:
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     dockerTarget: production
-    dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
+    dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=8 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
         fromDatabase:

@@ -339,7 +339,7 @@ describe('useFolderStatus', () => {
           ok: true,
           json: async () => mockStatusReady,
         })
-        // Mock sync response
+        // Mock sync response (not synced = no refetch)
         .mockResolvedValueOnce({
           ok: true,
           json: async () => ({ synced: false, reason: 'recent_sync' }),
@@ -481,12 +481,12 @@ describe('useFolderStatus', () => {
         })
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ synced: true, added: 2, modified: 1, deleted: 0 }),
+          json: async () => ({ synced: true, added: 0, modified: 0, deleted: 0 }),
         })
-        // Folder refetch after sync finds changes
+        // Folder refetch after successful sync (always happens when synced=true)
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => ({ ...mockFolder, files_total: 13 }),
+          json: async () => ({ ...mockFolder, last_synced_at: new Date().toISOString() }),
         })
 
       const { result } = renderHook(() =>
