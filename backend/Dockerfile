@@ -41,6 +41,9 @@ CMD ["uv", "run", "uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--por
 # =============================================================================
 FROM base AS production
 
+# Install psql for running migrations
+RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+
 # Copy dependency files and install
 COPY pyproject.toml uv.lock ./
 RUN uv sync --no-install-project --no-dev
