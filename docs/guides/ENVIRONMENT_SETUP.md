@@ -11,7 +11,7 @@ cp .env.example .env
 
 # 2. Edit .env and add your API keys
 # DATABASE_URL should use: localhost
-# DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+# DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote
 
 # 3. Start your local services
 npm run dev
@@ -40,8 +40,8 @@ docker-compose up
 
 The root cause was using different DATABASE_URL values:
 
-- **Root `.env` file**: `postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder`
-- **Docker container environment**: `postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder`
+- **Root `.env` file**: `postgresql+asyncpg://postgres:postgres@localhost:5432/footnote`
+- **Docker container environment**: `postgresql+asyncpg://postgres:postgres@db:5432/footnote`
 
 Inside Docker containers, `localhost` refers to the container itself, not the host machine. To connect to another container, you must use the Docker service name (e.g., `db`).
 
@@ -63,7 +63,7 @@ Inside Docker containers, `localhost` refers to the container itself, not the ho
 
 ```env
 # .env (for local development)
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 # ... other credentials
@@ -89,7 +89,7 @@ npm run dev
 
 ```env
 # .env (for docker-compose)
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/footnote
 # ↑ Note: 'db' is the service name in docker-compose.yml
 ```
 
@@ -107,12 +107,12 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: talk_to_folder
+      POSTGRES_DB: footnote
 
   backend:
     environment:
       # Option 1: Use value from .env file
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/footnote
 
       # Option 2: Reference from .env file
       # DATABASE_URL: ${DATABASE_URL}
@@ -198,10 +198,10 @@ If services won't start, use the debug script:
 ./scripts/debug-config.sh
 
 # Check database connectivity
-psql -h localhost -U postgres -d talk_to_folder -c "SELECT 1"
+psql -h localhost -U postgres -d footnote -c "SELECT 1"
 
 # Check Docker service connectivity (from inside container)
-docker-compose exec backend psql -h db -U postgres -d talk_to_folder -c "SELECT 1"
+docker-compose exec backend psql -h db -U postgres -d footnote -c "SELECT 1"
 
 # View logs
 docker-compose logs backend
@@ -212,11 +212,11 @@ docker-compose logs db
 
 ```bash
 # Test local database connection
-psql postgresql://postgres:postgres@localhost:5432/talk_to_folder
+psql postgresql://postgres:postgres@localhost:5432/footnote
 
 # Test from Python
 from sqlalchemy import create_engine
-engine = create_engine("postgresql://postgres:postgres@localhost:5432/talk_to_folder")
+engine = create_engine("postgresql://postgres:postgres@localhost:5432/footnote")
 with engine.connect() as conn:
     result = conn.execute("SELECT 1")
     print(result.fetchone())
@@ -224,7 +224,7 @@ with engine.connect() as conn:
 # Test from Docker container
 docker-compose exec backend python -c "
 from sqlalchemy import create_engine
-engine = create_engine('postgresql://postgres:postgres@db:5432/talk_to_folder')
+engine = create_engine('postgresql://postgres:postgres@db:5432/footnote')
 with engine.connect() as conn:
     print(conn.execute('SELECT 1').fetchone())
 "
@@ -347,7 +347,7 @@ grep -A 3 "POSTGRES_PASSWORD" docker-compose.yml
 # Default: user=postgres, password=postgres
 
 # 3. DATABASE_URL format
-# postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+# postgresql+asyncpg://postgres:postgres@db:5432/footnote
 #                      ^^^^^^^^  ^^^^^^^^
 #                      must match POSTGRES_USER and POSTGRES_PASSWORD
 ```

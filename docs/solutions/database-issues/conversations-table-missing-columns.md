@@ -65,10 +65,10 @@ Run ALTER TABLE commands directly on the database to add the missing columns:
 ```bash
 # Find the database name
 docker exec footnote-db psql -U postgres -c "\l"
-# Database is 'talk_to_folder'
+# Database is 'footnote'
 
 # Add the missing columns
-docker exec footnote-db psql -U postgres -d talk_to_folder -c \
+docker exec footnote-db psql -U postgres -d footnote -c \
   "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS title TEXT; \
    ALTER TABLE conversations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW();"
 

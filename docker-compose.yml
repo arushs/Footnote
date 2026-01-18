@@ -21,7 +21,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: talk_to_folder
+      POSTGRES_DB: footnote
     ports:
       - "5432:5432"
     volumes:
@@ -39,7 +39,7 @@ services:
       dockerfile: Dockerfile
     container_name: footnote-backend
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/footnote
       REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
@@ -82,7 +82,7 @@ services:
       dockerfile: Dockerfile
     container_name: footnote-worker
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/footnote
       REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}

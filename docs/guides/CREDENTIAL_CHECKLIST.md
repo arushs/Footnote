@@ -113,10 +113,10 @@ git diff --cached
 sed 's/=.*/=***/' .env
 
 # Test database connection
-psql postgresql://postgres:postgres@localhost:5432/talk_to_folder
+psql postgresql://postgres:postgres@localhost:5432/footnote
 
 # Test from Docker
-docker-compose exec backend psql -h db -U postgres -d talk_to_folder -c "SELECT 1"
+docker-compose exec backend psql -h db -U postgres -d footnote -c "SELECT 1"
 
 # Install pre-commit hook
 cp scripts/pre-commit-hook.sh .git/hooks/pre-commit

@@ -49,10 +49,10 @@ DOCKER SETUP (CRITICAL!)
 DATABASE_URL MUST use 'db' not 'localhost':
 
   CORRECT for Docker:
-  DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+  DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/footnote
 
   WRONG for Docker:
-  DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+  DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote
                                                        ^^^^^^^ THIS IS THE PROBLEM!
 
 If you see "connection refused" in Docker, check DATABASE_URL hostname.
@@ -81,8 +81,8 @@ Debug configuration:
   ./scripts/debug-config.sh                    # Shows current settings (sanitized)
 
 Test database connection:
-  psql postgresql://postgres:postgres@localhost:5432/talk_to_folder
-  docker-compose exec backend psql -h db -U postgres -d talk_to_folder -c "SELECT 1"
+  psql postgresql://postgres:postgres@localhost:5432/footnote
+  docker-compose exec backend psql -h db -U postgres -d footnote -c "SELECT 1"
 
 
 API KEYS NEEDED
