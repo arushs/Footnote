@@ -16,7 +16,7 @@ from app.services.anthropic import get_client as get_anthropic_client
 from app.services.drive import DriveService
 from app.services.file.chunking import DocumentChunk, chunk_document, generate_file_preview
 from app.services.file.embedding import embed_document, embed_documents_batch
-from app.services.file.extraction import ExtractionService
+from app.services.file.extraction import ExtractionService, MAX_IMAGE_SIZE_BYTES
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -270,8 +270,38 @@ async def process_job(job: IndexingJob) -> None:
         logger.info(f"Downloading PDF: {file_info.file_name}")
         pdf_content = await drive.download_file(file_info.google_file_id)
         document = await extraction.extract_pdf(pdf_content)
+    elif extraction.is_vision_supported(file_info.mime_type):
+        # Process image using Claude Vision
+        logger.info(f"Processing image: {file_info.file_name}")
+
+        # Check file size before downloading
+        file_metadata = await drive.get_file_metadata(file_info.google_file_id)
+        if file_metadata.size and file_metadata.size > MAX_IMAGE_SIZE_BYTES:
+            logger.info(
+                f"Skipping oversized image: {file_info.file_name} "
+                f"({file_metadata.size / 1024 / 1024:.1f}MB > 10MB)"
+            )
+            await mark_job_completed(job)
+            await update_file_status(job.file_id, "skipped")
+            return
+
+        # Download and extract description from image
+        image_content = await drive.download_file(file_info.google_file_id)
+        document = await extraction.extract_image(
+            image_content=image_content,
+            mime_type=file_info.mime_type,
+            file_name=file_info.file_name,
+        )
+    elif extraction.is_image(file_info.mime_type):
+        # Unsupported image format (BMP, TIFF, SVG, etc.)
+        logger.info(
+            f"Skipping unsupported image format: {file_info.file_name} ({file_info.mime_type})"
+        )
+        await mark_job_completed(job)
+        await update_file_status(job.file_id, "skipped")
+        return
     else:
-        # Skip unsupported file types (images, etc.) gracefully
+        # Skip unsupported file types gracefully
         logger.info(
             f"Skipping unsupported file type: {file_info.file_name} ({file_info.mime_type})"
         )
