@@ -4,7 +4,7 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,10 +87,10 @@ def calculate_recency_score(updated_at: datetime | None, half_life_days: float =
     if updated_at is None:
         return 0.5  # Default score for unknown dates
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     # Ensure updated_at is timezone-aware
     if updated_at.tzinfo is None:
-        updated_at = updated_at.replace(tzinfo=timezone.utc)
+        updated_at = updated_at.replace(tzinfo=UTC)
 
     age_days = (now - updated_at).total_seconds() / 86400  # Convert to days
 
