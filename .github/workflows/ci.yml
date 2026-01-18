@@ -76,7 +76,7 @@ jobs:
           uv run python -c "
           import app.config
           import app.routes.chat
-          import app.services.embedding
+          import app.services.file.embedding
           import app.services.chat
           import app.services.tools
           import app.models
