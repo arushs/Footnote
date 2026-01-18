@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, waitFor, act } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { useGooglePicker } from '../useGooglePicker'
+
+// Type definitions for Google APIs mocks
+interface MockWindow extends Window {
+  gapi?: {
+    load: (api: string, callback: () => void) => void
+  }
+  google?: {
+    picker: Record<string, unknown>
+    accounts: Record<string, unknown>
+  }
+}
 
 // Mock environment variables
 vi.mock('../../lib/env', () => ({}))
@@ -11,8 +22,8 @@ describe('useGooglePicker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     // Reset window.gapi and window.google
-    delete (window as any).gapi
-    delete (window as any).google
+    delete (window as MockWindow).gapi
+    delete (window as MockWindow).google
   })
 
   afterEach(() => {
@@ -61,12 +72,6 @@ describe('useGooglePicker', () => {
   })
 
   describe('With mocked Google APIs', () => {
-    const mockPickerResult = {
-      id: 'folder-123',
-      name: 'My Folder',
-      mimeType: 'application/vnd.google-apps.folder',
-    }
-
     beforeEach(() => {
       vi.stubEnv('VITE_GOOGLE_API_KEY', 'test-api-key')
       vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
@@ -76,10 +81,11 @@ describe('useGooglePicker', () => {
       const mockBuild = vi.fn(() => ({ setVisible: mockSetVisible }))
       const mockCallback = vi.fn()
 
-      ;(window as any).gapi = {
-        load: vi.fn((api: string, callback: () => void) => {
+      const mockWindow = window as MockWindow
+      mockWindow.gapi = {
+        load: vi.fn((_api: string, callback: () => void) => {
           callback()
-        }),
+        }) as MockWindow['gapi']['load'],
       }
 
       const mockDocsView = {
@@ -87,7 +93,7 @@ describe('useGooglePicker', () => {
         setSelectFolderEnabled: vi.fn().mockReturnThis(),
       }
 
-      ;(window as any).google = {
+      mockWindow.google = {
         picker: {
           PickerBuilder: vi.fn().mockImplementation(function() {
             return {
@@ -95,7 +101,7 @@ describe('useGooglePicker', () => {
               setOAuthToken: vi.fn().mockReturnThis(),
               setDeveloperKey: vi.fn().mockReturnThis(),
               setTitle: vi.fn().mockReturnThis(),
-              setCallback: vi.fn(function(cb: any) {
+              setCallback: vi.fn(function(cb: () => void) {
                 mockCallback.mockImplementation(cb)
                 return this
               }),
@@ -118,7 +124,7 @@ describe('useGooglePicker', () => {
         },
         accounts: {
           oauth2: {
-            initTokenClient: vi.fn(({ callback }) => ({
+            initTokenClient: vi.fn(({ callback }: { callback: (token: { access_token: string }) => void }) => ({
               requestAccessToken: () => {
                 callback({ access_token: 'test-token' })
               },
