@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -92,7 +93,13 @@ async def create_folder(
         index_status="indexing",
     )
     db.add(new_folder)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="This folder has already been added",
+        ) from None
 
     # List files from Google Drive and create file records + indexing jobs
     drive = DriveService(session.access_token)
