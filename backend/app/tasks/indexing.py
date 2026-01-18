@@ -188,7 +188,7 @@ async def _update_folder_progress(folder_id: uuid.UUID) -> None:
             text("""
                 SELECT
                     COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE index_status = 'indexed') as indexed
+                    COUNT(*) FILTER (WHERE index_status IN ('indexed', 'skipped')) as completed
                 FROM files
                 WHERE folder_id = :folder_id
             """),
@@ -196,20 +196,20 @@ async def _update_folder_progress(folder_id: uuid.UUID) -> None:
         )
         row = result.first()
         total = row.total if row else 0
-        indexed = row.indexed if row else 0
+        completed = row.completed if row else 0
 
-        status = "ready" if indexed == total else "indexing"
+        status = "ready" if completed == total else "indexing"
         await db.execute(
             text("""
                 UPDATE folders
-                SET files_indexed = :indexed,
+                SET files_indexed = :completed,
                     files_total = :total,
                     index_status = :status,
                     updated_at = NOW()
                 WHERE id = :folder_id
             """),
             {
-                "indexed": indexed,
+                "completed": completed,
                 "total": total,
                 "status": status,
                 "folder_id": str(folder_id),
@@ -260,6 +260,12 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
             logger.info(f"Downloading PDF: {file_info.file_name}")
             pdf_content = await drive.download_file(file_info.google_file_id)
             document = await extraction.extract_pdf(pdf_content)
+        elif extraction.is_vision_supported(file_info.mime_type):
+            logger.info(f"Processing image with Vision: {file_info.file_name}")
+            image_content = await drive.download_file(file_info.google_file_id)
+            document = await extraction.extract_image(
+                image_content, file_info.mime_type, file_info.file_name
+            )
         else:
             # Skip unsupported file types gracefully
             logger.info(
