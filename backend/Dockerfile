@@ -19,8 +19,8 @@ WORKDIR /app
 # =============================================================================
 FROM base AS development
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy dependency files (lock file ensures reproducible installs)
+COPY pyproject.toml uv.lock ./
 
 # Install dependencies
 RUN uv sync --no-install-project
@@ -42,7 +42,7 @@ CMD ["uv", "run", "uvicorn", "main:app", "--reload", "--host", "0.0.0.0", "--por
 FROM base AS production
 
 # Copy dependency files and install
-COPY pyproject.toml ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --no-install-project --no-dev
 
 # Copy application code
