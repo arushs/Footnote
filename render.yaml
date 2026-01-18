@@ -82,7 +82,7 @@ services:
     runtime: python
     plan: starter
     buildCommand: pip install uv && cd backend && uv sync
-    startCommand: cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
+    startCommand: cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=14 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
         fromDatabase:
