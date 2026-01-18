@@ -16,7 +16,7 @@ from app.services.anthropic import get_client as get_anthropic_client
 from app.services.drive import DriveService
 from app.services.file.chunking import DocumentChunk, chunk_document, generate_file_preview
 from app.services.file.embedding import embed_document, embed_documents_batch
-from app.services.file.extraction import ExtractionService, MAX_IMAGE_SIZE_BYTES
+from app.services.file.extraction import MAX_IMAGE_SIZE_BYTES, ExtractionService
 
 
 def format_vector(embedding: list[float]) -> str:
