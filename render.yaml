@@ -32,15 +32,15 @@ services:
       - key: VITE_API_URL
         value: https://footnote-api.onrender.com
 
-  # Backend - FastAPI Web Service (Docker)
+  # Backend - FastAPI Web Service
   - type: web
     name: footnote-api
-    runtime: docker
+    runtime: python
     plan: starter
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    buildCommand: pip install uv && cd backend && uv sync
+    startCommand: cd backend && uv run uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
-    preDeployCommand: "for f in database/migrations/*.sql; do psql $DATABASE_URL -f $f; done"
+    preDeployCommand: cd backend && uv run bin/migrate
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -70,14 +70,13 @@ services:
       - key: CORS_ORIGINS
         value: '["https://footnote-web.onrender.com"]'
 
-  # Celery Worker - Background Indexing Jobs (Docker)
+  # Celery Worker - Background Indexing Jobs
   - type: worker
     name: footnote-celery-worker
-    runtime: docker
+    runtime: python
     plan: starter
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
+    buildCommand: pip install uv && cd backend && uv sync
+    startCommand: cd backend && uv run celery -A app.celery_app worker --loglevel=info --concurrency=4 --pool=threads -Q celery,indexing --without-gossip --without-mingle
     envVars:
       - key: DATABASE_URL
         fromDatabase:
