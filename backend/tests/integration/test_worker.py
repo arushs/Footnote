@@ -210,14 +210,14 @@ class TestProcessJob:
             mock_update_progress.assert_called_once_with(job.folder_id)
 
     @pytest.mark.asyncio
-    async def test_process_job_raises_for_unsupported_type(
+    async def test_process_job_skips_unsupported_file_type(
         self,
         db_session,
         test_folder: Folder,
         test_file: File,
         test_session: Session,
     ):
-        """Test that process_job raises for unsupported file types."""
+        """Test that process_job skips unsupported file types gracefully."""
         job = IndexingJob(
             id=uuid.uuid4(),
             folder_id=test_folder.id,
@@ -226,14 +226,16 @@ class TestProcessJob:
             attempts=1,
         )
 
-        # Make file unsupported type
-        test_file.mime_type = "image/png"
+        # Make file unsupported type (not doc, pdf, or image)
+        test_file.mime_type = "application/octet-stream"
 
         with (
             patch("app.worker.get_user_session_for_folder") as mock_get_session,
             patch("app.worker.get_file_info") as mock_get_file,
             patch("app.worker.DriveService"),
             patch("app.worker.ExtractionService") as MockExtraction,
+            patch("app.worker.mark_job_completed") as mock_mark_completed,
+            patch("app.worker.update_file_status") as mock_update_status,
         ):
             mock_get_session.return_value = test_session
             mock_get_file.return_value = test_file
@@ -241,10 +243,15 @@ class TestProcessJob:
             mock_extraction = MagicMock()
             mock_extraction.is_google_doc.return_value = False
             mock_extraction.is_pdf.return_value = False
+            mock_extraction.is_vision_supported.return_value = False
+            mock_extraction.is_image.return_value = False
             MockExtraction.return_value = mock_extraction
 
-            with pytest.raises(ValueError, match="Unsupported file type"):
-                await process_job(job)
+            await process_job(job)
+
+            # Verify job was marked completed with skipped status
+            mock_mark_completed.assert_called_once_with(job)
+            mock_update_status.assert_called_once_with(job.file_id, "skipped")
 
 
 class TestMarkJobCompleted:
@@ -408,3 +415,202 @@ class TestChunkingIntegration:
 
         assert preview is not None
         assert "First block" in preview or "Second block" in preview
+
+
+class TestImageProcessing:
+    """Tests for image processing in the worker."""
+
+    @pytest.mark.asyncio
+    async def test_process_job_indexes_supported_image(
+        self,
+        db_session,
+        test_folder: Folder,
+        test_file: File,
+        test_session: Session,
+    ):
+        """Test that process_job successfully indexes a supported image."""
+        from app.services.drive import FileMetadata
+        from app.services.file.extraction import ExtractedDocument, TextBlock
+
+        job = IndexingJob(
+            id=uuid.uuid4(),
+            folder_id=test_folder.id,
+            file_id=test_file.id,
+            status="processing",
+            attempts=1,
+        )
+
+        # Make file an image type
+        test_file.mime_type = "image/png"
+
+        mock_drive = MagicMock()
+        mock_drive.get_file_metadata = AsyncMock(
+            return_value=FileMetadata(
+                id="google-file-id",
+                name="test.png",
+                mime_type="image/png",
+                size=1024 * 1024,  # 1MB
+            )
+        )
+        mock_drive.download_file = AsyncMock(return_value=b"fake image bytes")
+
+        # Mock extraction service with extract_image
+        mock_extracted_doc = ExtractedDocument(
+            title="test.png",
+            blocks=[
+                TextBlock(
+                    text="A beautiful image of a sunset.",
+                    location={"type": "image"},
+                    heading_context=None,
+                )
+            ],
+            metadata={"source_type": "image", "mime_type": "image/png"},
+        )
+
+        mock_extraction = MagicMock()
+        mock_extraction.is_google_doc.return_value = False
+        mock_extraction.is_pdf.return_value = False
+        mock_extraction.is_vision_supported.return_value = True
+        mock_extraction.is_image.return_value = True
+        mock_extraction.extract_image = AsyncMock(return_value=mock_extracted_doc)
+
+        with (
+            patch("app.worker.get_user_session_for_folder") as mock_get_session,
+            patch("app.worker.get_file_info") as mock_get_file,
+            patch("app.worker.DriveService") as MockDrive,
+            patch("app.worker.ExtractionService") as MockExtraction,
+            patch("app.worker.embed_document") as mock_embed_doc,
+            patch("app.worker.embed_documents_batch") as mock_embed_batch,
+            patch("app.worker.mark_job_completed") as mock_mark_completed,
+            patch("app.worker.update_folder_progress") as mock_update_progress,
+            patch("app.worker.async_session") as mock_session_maker,
+        ):
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=None)
+            mock_session.execute = AsyncMock()
+            mock_session.commit = AsyncMock()
+            mock_session_maker.return_value = mock_session
+
+            mock_get_session.return_value = test_session
+            mock_get_file.return_value = test_file
+            MockDrive.return_value = mock_drive
+            MockExtraction.return_value = mock_extraction
+            mock_embed_doc.return_value = [0.1] * 768
+            mock_embed_batch.return_value = [[0.1] * 768]
+
+            await process_job(job)
+
+            # Verify image was extracted via extract_image
+            mock_extraction.extract_image.assert_called_once_with(
+                image_content=b"fake image bytes",
+                mime_type="image/png",
+                file_name=test_file.file_name,
+            )
+            # Verify job was marked completed
+            mock_mark_completed.assert_called_once_with(job)
+
+    @pytest.mark.asyncio
+    async def test_process_job_skips_oversized_image(
+        self,
+        db_session,
+        test_folder: Folder,
+        test_file: File,
+        test_session: Session,
+    ):
+        """Test that process_job skips images over 10MB."""
+        from app.services.drive import FileMetadata
+
+        job = IndexingJob(
+            id=uuid.uuid4(),
+            folder_id=test_folder.id,
+            file_id=test_file.id,
+            status="processing",
+            attempts=1,
+        )
+
+        # Make file an image type
+        test_file.mime_type = "image/png"
+
+        mock_drive = MagicMock()
+        mock_drive.get_file_metadata = AsyncMock(
+            return_value=FileMetadata(
+                id="google-file-id",
+                name="large.png",
+                mime_type="image/png",
+                size=15 * 1024 * 1024,  # 15MB - over limit
+            )
+        )
+
+        mock_extraction = MagicMock()
+        mock_extraction.is_google_doc.return_value = False
+        mock_extraction.is_pdf.return_value = False
+        mock_extraction.is_vision_supported.return_value = True
+        mock_extraction.is_image.return_value = True
+
+        with (
+            patch("app.worker.get_user_session_for_folder") as mock_get_session,
+            patch("app.worker.get_file_info") as mock_get_file,
+            patch("app.worker.DriveService") as MockDrive,
+            patch("app.worker.ExtractionService") as MockExtraction,
+            patch("app.worker.mark_job_completed") as mock_mark_completed,
+            patch("app.worker.update_file_status") as mock_update_status,
+        ):
+            mock_get_session.return_value = test_session
+            mock_get_file.return_value = test_file
+            MockDrive.return_value = mock_drive
+            MockExtraction.return_value = mock_extraction
+
+            await process_job(job)
+
+            # Verify extract_image was NOT called (skipped due to size)
+            mock_extraction.extract_image.assert_not_called()
+            # Verify job was marked completed with skipped status
+            mock_mark_completed.assert_called_once_with(job)
+            mock_update_status.assert_called_once_with(job.file_id, "skipped")
+
+    @pytest.mark.asyncio
+    async def test_process_job_skips_unsupported_image_format(
+        self,
+        db_session,
+        test_folder: Folder,
+        test_file: File,
+        test_session: Session,
+    ):
+        """Test that process_job skips unsupported image formats (BMP, TIFF, SVG)."""
+        job = IndexingJob(
+            id=uuid.uuid4(),
+            folder_id=test_folder.id,
+            file_id=test_file.id,
+            status="processing",
+            attempts=1,
+        )
+
+        # Make file an unsupported image type
+        test_file.mime_type = "image/bmp"
+
+        mock_extraction = MagicMock()
+        mock_extraction.is_google_doc.return_value = False
+        mock_extraction.is_pdf.return_value = False
+        mock_extraction.is_vision_supported.return_value = False
+        mock_extraction.is_image.return_value = True
+
+        with (
+            patch("app.worker.get_user_session_for_folder") as mock_get_session,
+            patch("app.worker.get_file_info") as mock_get_file,
+            patch("app.worker.DriveService"),
+            patch("app.worker.ExtractionService") as MockExtraction,
+            patch("app.worker.mark_job_completed") as mock_mark_completed,
+            patch("app.worker.update_file_status") as mock_update_status,
+        ):
+            mock_get_session.return_value = test_session
+            mock_get_file.return_value = test_file
+            MockExtraction.return_value = mock_extraction
+
+            await process_job(job)
+
+            # Verify extract_image was NOT called (unsupported format)
+            mock_extraction.extract_image.assert_not_called()
+            # Verify job was marked completed with skipped status
+            mock_mark_completed.assert_called_once_with(job)
+            mock_update_status.assert_called_once_with(job.file_id, "skipped")
