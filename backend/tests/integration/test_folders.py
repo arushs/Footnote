@@ -297,3 +297,95 @@ class TestFolderLastSyncedAt:
         data = response.json()
         assert "last_synced_at" in data
         assert data["last_synced_at"] is None
+
+
+class TestSyncFolder:
+    """Tests for syncing folders with Google Drive."""
+
+    @pytest.mark.asyncio
+    async def test_sync_folder_skips_recent_sync(
+        self, auth_client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        """Test that sync is skipped if folder was synced recently."""
+        # Create a folder with recent last_synced_at
+        folder = Folder(
+            id=uuid.uuid4(),
+            user_id=test_user.id,
+            google_folder_id="recently-synced-folder",
+            folder_name="Recently Synced",
+            index_status="ready",
+            files_total=2,
+            files_indexed=2,
+            last_synced_at=datetime.now(UTC) - timedelta(minutes=30),  # 30 min ago
+        )
+        db_session.add(folder)
+        await db_session.flush()
+
+        response = await auth_client.post(f"/api/folders/{folder.id}/sync")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["synced"] is False
+        assert data["reason"] == "recent_sync"
+
+    @pytest.mark.asyncio
+    async def test_sync_folder_not_found(self, auth_client: AsyncClient):
+        """Test that sync returns 404 for nonexistent folder."""
+        response = await auth_client.post(f"/api/folders/{uuid.uuid4()}/sync")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "Folder not found"
+
+    @pytest.mark.asyncio
+    async def test_sync_folder_invalid_uuid(self, auth_client: AsyncClient):
+        """Test that sync returns 400 for invalid UUID."""
+        response = await auth_client.post("/api/folders/not-a-uuid/sync")
+
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid folder ID"
+
+    @pytest.mark.asyncio
+    async def test_sync_folder_requires_authentication(
+        self, client: AsyncClient, test_folder: Folder
+    ):
+        """Test that sync requires authentication."""
+        response = await client.post(f"/api/folders/{test_folder.id}/sync")
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_sync_folder_triggers_sync_when_stale(
+        self, auth_client: AsyncClient, db_session: AsyncSession, test_user, mock_drive_service
+    ):
+        """Test that sync triggers when folder hasn't been synced recently."""
+        # Create a folder with old last_synced_at
+        folder = Folder(
+            id=uuid.uuid4(),
+            user_id=test_user.id,
+            google_folder_id="stale-folder",
+            folder_name="Stale Folder",
+            index_status="ready",
+            files_total=2,
+            files_indexed=2,
+            last_synced_at=datetime.now(UTC) - timedelta(hours=2),  # 2 hours ago
+        )
+        db_session.add(folder)
+        await db_session.flush()
+
+        # Mock the sync service to return no changes
+        with patch("app.routes.folders.sync_folder_if_needed", new_callable=AsyncMock) as mock_sync:
+            mock_sync.return_value = {
+                "synced": True,
+                "added": 0,
+                "modified": 0,
+                "deleted": 0,
+            }
+            response = await auth_client.post(f"/api/folders/{folder.id}/sync")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["synced"] is True
+        assert data["added"] == 0
+        assert data["modified"] == 0
+        assert data["deleted"] == 0
+        mock_sync.assert_called_once()

@@ -31,7 +31,6 @@ from app.models import (
 from app.routes.auth import get_current_session
 from app.services.chat import agentic_rag, standard_rag
 from app.services.file.embedding import rerank
-from app.services.folder_sync import sync_folder_if_needed
 
 router = APIRouter()
 
@@ -344,14 +343,6 @@ async def chat(
             status_code=400,
             detail="Folder is still being indexed. Please wait.",
         )
-
-    # Sync folder with Drive if needed (checks last_synced_at to avoid frequent syncs)
-    await sync_folder_if_needed(
-        db=db,
-        folder=folder,
-        access_token=session.access_token,
-        refresh_token=session.refresh_token,
-    )
 
     # Get or create conversation
     if request.conversation_id:
@@ -741,14 +732,6 @@ async def chat_in_conversation(
             status_code=400,
             detail="Folder is still being indexed. Please wait.",
         )
-
-    # Sync folder with Drive if needed (checks last_synced_at to avoid frequent syncs)
-    await sync_folder_if_needed(
-        db=db,
-        folder=folder,
-        access_token=session.access_token,
-        refresh_token=session.refresh_token,
-    )
 
     # Route to appropriate mode based on agent_mode flag
     logger.info(

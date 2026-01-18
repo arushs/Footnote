@@ -339,6 +339,11 @@ describe('useFolderStatus', () => {
           ok: true,
           json: async () => mockStatusReady,
         })
+        // Mock sync response
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ synced: false, reason: 'recent_sync' }),
+        })
 
       renderHook(() =>
         useFolderStatus({ folderId: 'folder-1', pollInterval: 1000 })
@@ -348,8 +353,8 @@ describe('useFolderStatus', () => {
         vi.advanceTimersByTime(5000)
       })
 
-      // Should only have called for initial fetch (folder + status)
-      expect(mockFetch).toHaveBeenCalledTimes(2)
+      // Should only have called for initial fetch (folder + status + sync)
+      expect(mockFetch).toHaveBeenCalledTimes(3)
     })
   })
 
@@ -460,6 +465,106 @@ describe('useFolderStatus', () => {
       await waitFor(() => {
         expect(result.current.error).toBe('Failed to fetch status')
       })
+    })
+  })
+
+  describe('Background sync', () => {
+    it('should trigger sync when folder becomes ready', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockFolder,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockStatusReady,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ synced: true, added: 2, modified: 1, deleted: 0 }),
+        })
+        // Folder refetch after sync finds changes
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ ...mockFolder, files_total: 13 }),
+        })
+
+      const { result } = renderHook(() =>
+        useFolderStatus({ folderId: 'folder-1' })
+      )
+
+      await waitFor(() => {
+        expect(result.current.isReady).toBe(true)
+      })
+
+      // Verify sync was called
+      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1/sync', {
+        method: 'POST',
+        credentials: 'include',
+        signal: expect.any(AbortSignal),
+      })
+    })
+
+    it('should not trigger sync when folder is indexing', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockFolder,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockStatusIndexing,
+        })
+        // Mock for polling
+        .mockResolvedValue({
+          ok: true,
+          json: async () => mockStatusIndexing,
+        })
+
+      const { result } = renderHook(() =>
+        useFolderStatus({ folderId: 'folder-1' })
+      )
+
+      await waitFor(() => {
+        expect(result.current.isIndexing).toBe(true)
+      })
+
+      // Sync should not have been called (only folder + status)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        '/api/folders/folder-1/sync',
+        expect.any(Object)
+      )
+    })
+
+    it('should handle sync errors gracefully', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      mockFetch
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockFolder,
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => mockStatusReady,
+        })
+        .mockRejectedValueOnce(new Error('Network error'))
+
+      const { result } = renderHook(() =>
+        useFolderStatus({ folderId: 'folder-1' })
+      )
+
+      await waitFor(() => {
+        expect(result.current.isReady).toBe(true)
+      })
+
+      // Wait for the error to be logged
+      await waitFor(() => {
+        expect(consoleSpy).toHaveBeenCalledWith('Background sync failed:', expect.any(Error))
+      })
+
+      consoleSpy.mockRestore()
     })
   })
 
