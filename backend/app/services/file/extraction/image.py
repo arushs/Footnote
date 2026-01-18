@@ -2,7 +2,10 @@
 
 import base64
 import logging
+from typing import cast
 
+from anthropic.types import ImageBlockParam, TextBlockParam
+from anthropic.types import TextBlock as AnthropicTextBlock
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
@@ -97,30 +100,31 @@ class ImageExtractor:
 
         logger.info(f"Analyzing image {file_name} with {self.model}")
 
+        image_block: ImageBlockParam = {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": media_type,  # type: ignore[typeddict-item]
+                "data": base64.b64encode(image_content).decode("utf-8"),
+            },
+        }
+        text_block: TextBlockParam = {
+            "type": "text",
+            "text": self.VISION_PROMPT.format(file_name=file_name),
+        }
+
         response = await client.messages.create(
             model=self.model,
             max_tokens=1000,
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": base64.b64encode(image_content).decode("utf-8"),
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": self.VISION_PROMPT.format(file_name=file_name),
-                        },
-                    ],
+                    "content": [image_block, text_block],
                 }
             ],
         )
 
-        description = response.content[0].text
+        response_block = cast(AnthropicTextBlock, response.content[0])
+        description = response_block.text
         logger.info(f"Generated {len(description)} char description for {file_name}")
         return description
