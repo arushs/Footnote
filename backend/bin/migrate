@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Database migration runner.
+
+Runs SQL migrations from database/migrations/ in order, tracking which
+have been applied in a schema_migrations table.
+
+Usage:
+    bin/migrate              # Run pending migrations
+    bin/migrate --status     # Show migration status
+    bin/migrate --rollback   # Rollback last migration (if down file exists)
+"""
+
+import os
+import re
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import psycopg2
+from psycopg2.extras import RealDictCursor
+
+
+def get_database_url() -> str:
+    """Get database URL from environment, converting to psycopg2 format."""
+    url = os.environ.get("DATABASE_URL", "")
+    if not url:
+        # Try loading from .env file
+        env_file = Path(__file__).parent.parent / ".env"
+        if env_file.exists():
+            for line in env_file.read_text().splitlines():
+                if line.startswith("DATABASE_URL="):
+                    url = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    break
+
+    if not url:
+        print("ERROR: DATABASE_URL environment variable not set")
+        sys.exit(1)
+
+    # Convert asyncpg URL to psycopg2 format
+    url = re.sub(r"postgresql\+asyncpg://", "postgresql://", url)
+    url = re.sub(r"postgres://", "postgresql://", url)
+    return url
+
+
+def get_migrations_dir() -> Path:
+    """Get the migrations directory path."""
+    return Path(__file__).parent.parent / "database" / "migrations"
+
+
+def ensure_schema_migrations_table(conn) -> None:
+    """Create schema_migrations table if it doesn't exist."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS schema_migrations (
+                version VARCHAR(255) PRIMARY KEY,
+                applied_at TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+    conn.commit()
+
+
+def get_applied_migrations(conn) -> set[str]:
+    """Get set of already applied migration versions."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT version FROM schema_migrations ORDER BY version")
+        return {row[0] for row in cur.fetchall()}
+
+
+def get_pending_migrations(migrations_dir: Path, applied: set[str]) -> list[tuple[str, Path]]:
+    """Get list of pending migrations as (version, path) tuples."""
+    pending = []
+    for f in sorted(migrations_dir.glob("*.sql")):
+        # Extract version from filename (e.g., "001_add_hybrid_search.sql" -> "001")
+        version = f.stem.split("_")[0]
+        if version not in applied:
+            pending.append((version, f))
+    return pending
+
+
+def run_migration(conn, version: str, path: Path) -> None:
+    """Run a single migration."""
+    sql = path.read_text()
+
+    with conn.cursor() as cur:
+        cur.execute(sql)
+        cur.execute(
+            "INSERT INTO schema_migrations (version) VALUES (%s)",
+            (version,)
+        )
+    conn.commit()
+
+
+def show_status(conn, migrations_dir: Path) -> None:
+    """Show migration status."""
+    applied = get_applied_migrations(conn)
+    all_migrations = sorted(migrations_dir.glob("*.sql"))
+
+    print("Migration Status:")
+    print("-" * 50)
+
+    for f in all_migrations:
+        version = f.stem.split("_")[0]
+        status = "applied" if version in applied else "pending"
+        print(f"  [{status:>7}] {f.name}")
+
+    if not all_migrations:
+        print("  No migrations found")
+
+
+def run_migrations(conn, migrations_dir: Path) -> None:
+    """Run all pending migrations."""
+    applied = get_applied_migrations(conn)
+    pending = get_pending_migrations(migrations_dir, applied)
+
+    if not pending:
+        print("No pending migrations")
+        return
+
+    print(f"Running {len(pending)} migration(s)...")
+
+    for version, path in pending:
+        print(f"  Applying {path.name}...", end=" ", flush=True)
+        try:
+            run_migration(conn, version, path)
+            print("done")
+        except Exception as e:
+            print(f"FAILED")
+            print(f"    Error: {e}")
+            sys.exit(1)
+
+    print("All migrations applied successfully")
+
+
+def main():
+    url = get_database_url()
+    migrations_dir = get_migrations_dir()
+
+    if not migrations_dir.exists():
+        print(f"ERROR: Migrations directory not found: {migrations_dir}")
+        sys.exit(1)
+
+    try:
+        conn = psycopg2.connect(url)
+    except Exception as e:
+        print(f"ERROR: Could not connect to database: {e}")
+        sys.exit(1)
+
+    try:
+        ensure_schema_migrations_table(conn)
+
+        if "--status" in sys.argv:
+            show_status(conn, migrations_dir)
+        elif "--rollback" in sys.argv:
+            print("Rollback not yet implemented")
+            sys.exit(1)
+        else:
+            run_migrations(conn, migrations_dir)
+    finally:
+        conn.close()
+
+
+if __name__ == "__main__":
+    main()
