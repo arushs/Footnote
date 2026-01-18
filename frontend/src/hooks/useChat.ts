@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import type { Message, Citation, ChatState } from '../types'
 import { addToast } from '../components/ui/toast'
+import { apiUrl } from '../config/api'
 
 const DEFAULT_MAX_ITERATIONS = 10
 
@@ -70,8 +71,8 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
     try {
       // Use conversation-centric endpoint if we have an existing conversation
       const url = state.currentConversationId
-        ? `/api/conversations/${state.currentConversationId}/chat`
-        : `/api/folders/${folderId}/chat`
+        ? apiUrl(`/api/conversations/${state.currentConversationId}/chat`)
+        : apiUrl(`/api/folders/${folderId}/chat`)
 
       const response = await fetch(url, {
         method: 'POST',
@@ -211,7 +212,7 @@ export function useChat({ folderId, onSourcesUpdate, enabled = true, agentMode =
     }))
 
     try {
-      const response = await fetch(`/api/conversations/${conversationId}/messages`, {
+      const response = await fetch(apiUrl(`/api/conversations/${conversationId}/messages`), {
         credentials: 'include',
       })
       if (!response.ok) throw new Error('Failed to load conversation')

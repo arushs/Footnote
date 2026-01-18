@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { apiUrl } from '../config/api'
 import type { Conversation } from '../types'
 
 interface UseConversationsOptions {
@@ -16,7 +17,7 @@ export function useConversations({ folderId, enabled = true }: UseConversationsO
 
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/folders/${folderId}/conversations`)
+      const response = await fetch(apiUrl(`/api/folders/${folderId}/conversations`))
       if (!response.ok) throw new Error('Failed to fetch conversations')
       const data: Conversation[] = await response.json()
       setConversations(data)

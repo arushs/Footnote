@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { addToast } from '../components/ui/toast'
+import { apiUrl } from '../config/api'
 import type { FolderStatus, Folder } from '../types'
 
 interface UseFolderStatusOptions {
@@ -19,7 +20,7 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
 
   const fetchFolder = useCallback(async () => {
     try {
-      const response = await fetch(`/api/folders/${folderId}`)
+      const response = await fetch(apiUrl(`/api/folders/${folderId}`))
       if (!response.ok) throw new Error('Folder not found')
       const data: Folder = await response.json()
       setFolder(data)
@@ -32,7 +33,7 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
 
   const fetchStatus = useCallback(async () => {
     try {
-      const response = await fetch(`/api/folders/${folderId}/status`)
+      const response = await fetch(apiUrl(`/api/folders/${folderId}/status`))
       if (!response.ok) throw new Error('Failed to fetch status')
       const data: FolderStatus = await response.json()
       setStatus(data)
@@ -112,7 +113,7 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
 
     const controller = new AbortController()
 
-    fetch(`/api/folders/${folderId}/sync`, {
+    fetch(apiUrl(`/api/folders/${folderId}/sync`), {
       method: 'POST',
       credentials: 'include',
       signal: controller.signal,
