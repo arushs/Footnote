@@ -117,28 +117,6 @@ docker-compose up
 
 # Frontend: http://localhost:3000
 # Backend:  http://localhost:8000
-# API docs: http://localhost:8000/docs
-```
-
-### 4. Or run locally
-
-```bash
-# Terminal 1: Start PostgreSQL + Redis
-docker-compose up db redis
-
-# Terminal 2: Backend
-cd backend
-uv sync
-uv run uvicorn main:app --reload
-
-# Terminal 3: Celery worker
-cd backend
-uv run celery -A app.celery_app worker --loglevel=info --pool=threads -Q celery,indexing
-
-# Terminal 4: Frontend
-cd frontend
-npm install
-npm run dev
 ```
 
 ## Development
