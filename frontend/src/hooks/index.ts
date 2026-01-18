@@ -1,4 +1,5 @@
 export { useChat } from './useChat'
 export { useConversations } from './useConversations'
+export { useFolders } from './useFolders'
 export { useFolderStatus } from './useFolderStatus'
 export { useGooglePicker } from './useGooglePicker'
