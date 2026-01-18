@@ -143,7 +143,9 @@ class TestWeightedScore:
     def test_weighted_score_custom_weights(self):
         """Should work with custom weights."""
         score = calculate_weighted_score(
-            1.0, 1.0, 1.0,
+            1.0,
+            1.0,
+            1.0,
             vector_weight=0.5,
             keyword_weight=0.3,
             recency_weight=0.2,
@@ -400,9 +402,7 @@ class TestHybridSearchIntegration:
 
         # Second call: keyword search
         keyword_result = MagicMock()
-        keyword_result.fetchall.return_value = [
-            MagicMock(chunk_id=chunk_id, score=0.6)
-        ]
+        keyword_result.fetchall.return_value = [MagicMock(chunk_id=chunk_id, score=0.6)]
 
         mock_db.execute = AsyncMock(side_effect=[vector_result, keyword_result])
 
