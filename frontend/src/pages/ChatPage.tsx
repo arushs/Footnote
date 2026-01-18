@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { FolderOpen, ChevronDown, Loader2, Plus } from 'lucide-react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
@@ -8,63 +8,21 @@ import { SourcesPanel } from '../components/sources'
 import { IndexingProgress, IndexingComplete } from '../components/overlay'
 import { AppShell } from '../components/layout/AppShell'
 import { Header, UserMenu } from '../components/layout/Header'
-import { useChat, useConversations, useFolderStatus, useGooglePicker } from '../hooks'
-import type { Citation, Folder } from '../types'
+import { useChat, useConversations, useFolders, useFolderStatus } from '../hooks'
+import type { Citation } from '../types'
 import { cn } from '../lib/utils'
-import { addToast } from '../components/ui/toast'
 
 function EmptyState() {
   const navigate = useNavigate()
-  const { isLoaded, isConfigured, openPicker } = useGooglePicker()
-  const [folders, setFolders] = useState<Folder[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isCreating, setIsCreating] = useState(false)
-
-  useEffect(() => {
-    fetch('/api/folders', { credentials: 'include' })
-      .then((r) => r.json())
-      .then((data) => setFolders(data.folders))
-      .catch(() => addToast('Failed to load folders', 'error'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  const handleAddFolder = async () => {
-    if (!isConfigured || !isLoaded) {
-      addToast('Google Drive integration not ready', 'error')
-      return
-    }
-    try {
-      const result = await openPicker()
-      if (!result) return
-
-      setIsCreating(true)
-      const response = await fetch('/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          google_folder_id: result.id,
-          folder_name: result.name,
-        }),
-      })
-
-      if (response.ok) {
-        const newFolder = await response.json()
-        addToast(`Added folder "${result.name}"`, 'success')
-        navigate(`/chat/${newFolder.id}`)
-      } else {
-        const error = await response.json().catch(() => ({}))
-        addToast(error.detail || 'Failed to add folder', 'error')
-      }
-    } catch {
-      addToast('Failed to add folder', 'error')
-    } finally {
-      setIsCreating(false)
-    }
-  }
-
-  const readyFolders = folders.filter((f) => f.index_status === 'ready')
-  const indexingFolders = folders.filter((f) => f.index_status === 'indexing')
+  const {
+    folders,
+    readyFolders,
+    indexingFolders,
+    isLoading,
+    isCreating,
+    isReady,
+    addFolder,
+  } = useFolders()
 
   return (
     <div className="flex-1 flex items-center justify-center bg-background">
@@ -79,7 +37,7 @@ function EmptyState() {
           Select a folder to start chatting with your documents.
         </p>
 
-        {loading ? (
+        {isLoading ? (
           <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
         ) : (
           <div className="space-y-3">
@@ -152,8 +110,8 @@ function EmptyState() {
             )}
 
             <button
-              onClick={handleAddFolder}
-              disabled={isCreating || !isConfigured}
+              onClick={addFolder}
+              disabled={isCreating || !isReady}
               className={cn(
                 'w-full flex items-center justify-center gap-2 px-4 py-3',
                 'bg-primary text-primary-foreground rounded-lg',
