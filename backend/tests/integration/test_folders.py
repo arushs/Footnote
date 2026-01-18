@@ -9,7 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import File, Folder, IndexingJob
+from app.models import File, Folder
 
 
 class TestListFolders:
@@ -54,8 +54,11 @@ class TestCreateFolder:
     async def test_create_folder_success(
         self, auth_client: AsyncClient, db_session, mock_drive_service
     ):
-        """Test that creating a folder lists files and creates indexing jobs."""
-        with patch("app.routes.folders.DriveService", return_value=mock_drive_service):
+        """Test that creating a folder lists files and dispatches indexing tasks."""
+        with (
+            patch("app.routes.folders.DriveService", return_value=mock_drive_service),
+            patch("app.routes.folders.process_indexing_job") as mock_task,
+        ):
             response = await auth_client.post(
                 "/api/folders",
                 json={
@@ -71,18 +74,14 @@ class TestCreateFolder:
         assert data["index_status"] == "indexing"
         assert data["files_total"] == 2  # Mock returns 2 files
 
-        # Verify files and indexing jobs were created
+        # Verify files were created
         folder_id = uuid.UUID(data["id"])
         result = await db_session.execute(select(File).where(File.folder_id == folder_id))
         files = result.scalars().all()
         assert len(files) == 2
 
-        result = await db_session.execute(
-            select(IndexingJob).where(IndexingJob.folder_id == folder_id)
-        )
-        jobs = result.scalars().all()
-        assert len(jobs) == 2
-        assert all(job.status == "pending" for job in jobs)
+        # Verify Celery tasks were dispatched for each file
+        assert mock_task.delay.call_count == 2
 
     @pytest.mark.asyncio
     async def test_create_folder_requires_authentication(self, client: AsyncClient):

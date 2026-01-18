@@ -132,23 +132,25 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_search_folder_returns_text(self):
         """Search folder tool should return formatted text response."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        # Only mock hybrid_search - it handles embed_query internally
-        with patch("app.services.chat.agent.hybrid_search") as mock_search:
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
+        )
+
+        # Mock hybrid_search in the search_folder tool module
+        with patch("app.services.tools.search_folder.hybrid_search") as mock_search:
             mock_search.return_value = []
 
-            result = await execute_tool(
-                "search_folder",
-                {"query": "test query"},
-                folder_id,
-                user_id,
-                mock_db,
-                indexed_chunks,
-            )
+            result = await execute_tool("search_folder", {"query": "test query"}, ctx)
 
             # When no results, returns "No results found."
             assert result == "No results found."
@@ -160,12 +162,21 @@ class TestExecuteTool:
         hybrid_search handles embedding internally. Calling embed_query twice
         caused timeout issues (the original bug this test prevents).
         """
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        with patch("app.services.chat.agent.hybrid_search") as mock_search:
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
+        )
+
+        with patch("app.services.tools.search_folder.hybrid_search") as mock_search:
             mock_search.return_value = []
 
             # Verify embed_query is not imported in agent_rag
@@ -175,14 +186,7 @@ class TestExecuteTool:
                 "embed_query should not be imported in agent_rag - hybrid_search handles it"
             )
 
-            await execute_tool(
-                "search_folder",
-                {"query": "test query"},
-                folder_id,
-                user_id,
-                mock_db,
-                indexed_chunks,
-            )
+            await execute_tool("search_folder", {"query": "test query"}, ctx)
 
             # Verify hybrid_search was called with the query string (not an embedding)
             mock_search.assert_called_once()
@@ -193,22 +197,24 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_search_folder_handles_search_errors(self):
         """Should return error JSON when hybrid_search fails."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        with patch("app.services.chat.agent.hybrid_search") as mock_search:
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
+        )
+
+        with patch("app.services.tools.search_folder.hybrid_search") as mock_search:
             mock_search.side_effect = Exception("Connection timeout")
 
-            result = await execute_tool(
-                "search_folder",
-                {"query": "test query"},
-                folder_id,
-                user_id,
-                mock_db,
-                indexed_chunks,
-            )
+            result = await execute_tool("search_folder", {"query": "test query"}, ctx)
 
             parsed = json.loads(result)
             assert "error" in parsed
@@ -218,19 +224,21 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_search_folder_empty_query(self):
         """Search folder should return error for empty query."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        result = await execute_tool(
-            "search_folder",
-            {"query": ""},
-            folder_id,
-            user_id,
-            mock_db,
-            indexed_chunks,
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
         )
+
+        result = await execute_tool("search_folder", {"query": ""}, ctx)
 
         parsed = json.loads(result)
         assert "error" in parsed
@@ -238,19 +246,21 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_get_file_invalid_id(self):
         """Get file should return error for invalid UUID."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        result = await execute_tool(
-            "get_file",
-            {"file_id": "not-a-uuid"},
-            folder_id,
-            user_id,
-            mock_db,
-            indexed_chunks,
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
         )
+
+        result = await execute_tool("get_file", {"file_id": "not-a-uuid"}, ctx)
 
         parsed = json.loads(result)
         assert "error" in parsed
@@ -259,6 +269,8 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_get_file_not_found(self):
         """Get file should return error when file not found."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -268,14 +280,14 @@ class TestExecuteTool:
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        result = await execute_tool(
-            "get_file",
-            {"file_id": str(uuid.uuid4())},
-            folder_id,
-            user_id,
-            mock_db,
-            indexed_chunks,
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
         )
+
+        result = await execute_tool("get_file", {"file_id": str(uuid.uuid4())}, ctx)
 
         parsed = json.loads(result)
         assert "error" in parsed
@@ -284,6 +296,8 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_get_file_success(self):
         """Get file should return file content text when found."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         mock_file = MagicMock()
         mock_file.id = uuid.uuid4()
@@ -300,6 +314,13 @@ class TestExecuteTool:
         user_id = uuid.uuid4()
         indexed_chunks = []
 
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
+        )
+
         # Mock get_user_session_for_folder, DriveService, and ExtractionService
         mock_session = MagicMock()
         mock_session.access_token = "test_token"
@@ -310,9 +331,9 @@ class TestExecuteTool:
         mock_document.blocks = [mock_block]
 
         with (
-            patch("app.services.chat.agent.get_user_session_for_folder") as mock_get_session,
-            patch("app.services.chat.agent.DriveService") as mock_drive_class,
-            patch("app.services.chat.agent.ExtractionService") as mock_extraction_class,
+            patch("app.services.tools.get_file.get_user_session_for_folder") as mock_get_session,
+            patch("app.services.tools.get_file.DriveService") as mock_drive_class,
+            patch("app.services.tools.get_file.ExtractionService") as mock_extraction_class,
         ):
             mock_get_session.return_value = mock_session
 
@@ -326,14 +347,7 @@ class TestExecuteTool:
             mock_extraction.extract_pdf = AsyncMock(return_value=mock_document)
             mock_extraction_class.return_value = mock_extraction
 
-            result = await execute_tool(
-                "get_file",
-                {"file_id": str(uuid.uuid4())},
-                folder_id,
-                user_id,
-                mock_db,
-                indexed_chunks,
-            )
+            result = await execute_tool("get_file", {"file_id": str(uuid.uuid4())}, ctx)
 
             # Returns formatted text, not JSON
             assert "[1]" in result
@@ -347,19 +361,21 @@ class TestExecuteTool:
     @pytest.mark.asyncio
     async def test_execute_unknown_tool(self):
         """Unknown tool should return error."""
+        from app.services.tools import ToolContext
+
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        result = await execute_tool(
-            "unknown_tool",
-            {},
-            folder_id,
-            user_id,
-            mock_db,
-            indexed_chunks,
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
         )
+
+        result = await execute_tool("unknown_tool", {}, ctx)
 
         parsed = json.loads(result)
         assert "error" in parsed
@@ -504,7 +520,7 @@ class TestAgenticRAGFlow:
         # Only mock hybrid_search - embed_query is handled internally
         with (
             patch("app.services.chat.agent.get_client") as mock_get_client,
-            patch("app.services.chat.agent.hybrid_search") as mock_search,
+            patch("app.services.tools.search_folder.hybrid_search") as mock_search,
         ):
             mock_search.return_value = []
 
