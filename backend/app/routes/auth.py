@@ -100,8 +100,7 @@ async def google_callback(
     db.add(session)
     await db.flush()
 
-    # Set session cookie (using session ID as the cookie value)
-    # Use SameSite=None for cross-origin (production) or Lax for same-origin (dev)
+    # Cookie-based auth (works with custom domain)
     is_production = settings.frontend_url.startswith("https")
     redirect = RedirectResponse(url=f"{settings.frontend_url}/chat", status_code=302)
     redirect.set_cookie(
@@ -109,7 +108,7 @@ async def google_callback(
         value=str(session.id),
         httponly=True,
         secure=is_production,
-        samesite="none" if is_production else "lax",
+        samesite="lax",
         max_age=settings.session_expire_hours * 3600,
     )
 
@@ -133,13 +132,7 @@ async def logout(
         except ValueError:
             pass  # Invalid UUID, ignore
 
-    # Match cookie settings used when setting the cookie
-    is_production = settings.frontend_url.startswith("https")
-    response.delete_cookie(
-        key="session_id",
-        secure=is_production,
-        samesite="none" if is_production else "lax",
-    )
+    response.delete_cookie(key="session_id")
     return {"message": "Logged out successfully"}
 
 
