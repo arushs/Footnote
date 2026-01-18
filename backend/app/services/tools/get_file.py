@@ -6,8 +6,9 @@ import base64
 import json
 import logging
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
+from anthropic.types import ImageBlockParam, TextBlockParam
 from sqlalchemy import select
 
 from app.config import settings
@@ -71,34 +72,36 @@ async def _describe_image_with_vision(
         media_type = "image/jpeg"
 
     try:
+        image_block = cast(
+            ImageBlockParam,
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": media_type,
+                    "data": base64.b64encode(image_content).decode("utf-8"),
+                },
+            },
+        )
+        text_block = cast(
+            TextBlockParam,
+            {
+                "type": "text",
+                "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
+                "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
+                "2. Any text visible in the image (transcribe it)\n"
+                "3. Key visual details that might be relevant for search and retrieval\n"
+                "4. The overall context or purpose of the image if apparent",
+            },
+        )
         response = await client.messages.create(
             model=settings.claude_model,
             max_tokens=1000,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": base64.b64encode(image_content).decode("utf-8"),
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
-                            "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
-                            "2. Any text visible in the image (transcribe it)\n"
-                            "3. Key visual details that might be relevant for search and retrieval\n"
-                            "4. The overall context or purpose of the image if apparent",
-                        },
-                    ],
-                }
-            ],
+            messages=[{"role": "user", "content": [image_block, text_block]}],
         )
-        return response.content[0].text
+        if response.content and hasattr(response.content[0], "text"):
+            return response.content[0].text
+        return "[Image analysis returned no text]"
     except Exception as e:
         logger.error(f"[AGENT] Vision analysis failed for {file_name}: {e}")
         return f"[Image analysis failed: {str(e)}]"
