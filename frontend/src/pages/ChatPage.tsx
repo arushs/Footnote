@@ -244,7 +244,7 @@ export function ChatPage() {
     <AppShell>
       {/* Header */}
       <Header>
-        <Header.Brand title={folder?.folder_name || 'Chat'} />
+        <Header.Brand title="Footnote" />
         <Header.Actions>
           <UserMenu />
         </Header.Actions>
