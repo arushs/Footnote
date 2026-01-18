@@ -236,6 +236,7 @@ async def execute_tool(
     tool_name: str,
     tool_input: dict,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     db: AsyncSession,
     indexed_chunks: list,
 ) -> str:
@@ -261,6 +262,7 @@ async def execute_tool(
                 db=db,
                 query=query,
                 folder_id=folder_id,
+                user_id=user_id,
                 top_k=15,
             )
             logger.info(f"[AGENT] Search returned {len(results)} results")
@@ -459,6 +461,7 @@ async def execute_tool(
 async def agentic_rag(
     db: AsyncSession,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     conversation: Conversation,
     user_message: str,
     folder_name: str = "Documents",
@@ -560,6 +563,7 @@ async def agentic_rag(
                         block.name,
                         block.input,
                         folder_id,
+                        user_id,
                         db,
                         indexed_chunks,
                     )
