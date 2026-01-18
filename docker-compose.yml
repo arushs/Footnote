@@ -89,6 +89,7 @@ services:
       FIREWORKS_API_KEY: ${FIREWORKS_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      CONTEXTUAL_CHUNKING_ENABLED: ${CONTEXTUAL_CHUNKING_ENABLED:-false}
     depends_on:
       db:
         condition: service_healthy

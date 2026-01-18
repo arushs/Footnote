@@ -7,7 +7,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
 from app.database import async_session
@@ -41,73 +40,35 @@ logger = logging.getLogger(__name__)
 # Contextual Retrieval: Generate context for chunks before embedding
 # See: https://www.anthropic.com/news/contextual-retrieval
 
-CONTEXT_PROMPT = """Document: {file_name}
-
-{document_excerpt}
-
----
-Chunk to contextualize:
-{chunk_text}
-
-Write 1-2 sentences situating this chunk within the document. Output only the context."""
-
-
-@retry(
-    retry=retry_if_exception_type(Exception),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(3),
-    reraise=False,
+CONTEXT_INSTRUCTION = (
+    "Write 1-2 sentences situating this chunk within the document. Output only the context."
 )
-async def _generate_single_context(
-    client,
-    file_name: str,
-    document_excerpt: str,
-    chunk_text: str,
-) -> str | None:
-    """Generate context for a single chunk with retry."""
-    try:
-        response = await client.messages.create(
-            model=settings.claude_fast_model,
-            max_tokens=100,
-            temperature=0.0,
-            messages=[
-                {
-                    "role": "user",
-                    "content": CONTEXT_PROMPT.format(
-                        file_name=file_name,
-                        document_excerpt=document_excerpt,
-                        chunk_text=chunk_text,
-                    ),
-                }
-            ],
-        )
-        return response.content[0].text.strip()
-    except Exception as e:
-        logger.warning(f"Context generation failed: {e}")
-        return None
 
 
 async def _generate_chunk_contexts(
     file_name: str,
     full_document: str,
     chunks: list[DocumentChunk],
-    max_concurrent: int = 5,
+    max_concurrent: int = 5,  # kept for API compatibility, not used with caching
 ) -> list[str]:
     """
-    Generate contexts for all chunks in parallel with bounded concurrency.
+    Generate contexts for all chunks using prompt caching.
 
-    Uses Claude Haiku to generate a 1-2 sentence context for each chunk,
-    which is prepended before embedding to improve retrieval accuracy.
+    Uses Anthropic's prompt caching to cache the document excerpt once,
+    then pay only 10% for subsequent chunk context generations.
+    This reduces costs by ~88% compared to sending the full document each time.
 
     Args:
         file_name: Name of the document for context
         full_document: Full document text
         chunks: List of DocumentChunk objects
-        max_concurrent: Max parallel LLM calls (default 5 to avoid rate limits)
+        max_concurrent: Kept for API compatibility (not used with caching)
 
     Returns:
         List of contextualized chunk texts (context + original text)
     """
+    import anthropic
+
     # Skip for very short documents - context adds no value
     if len(full_document) < 500:
         logger.debug(f"Skipping context generation for short document: {file_name}")
@@ -119,20 +80,71 @@ async def _generate_chunk_contexts(
         doc_excerpt += "\n[...truncated...]"
 
     client = get_anthropic_client()
-    semaphore = asyncio.Semaphore(max_concurrent)
+    results: list[str] = []
+    contextualized = 0
 
-    async def generate_with_limit(chunk: DocumentChunk) -> str:
-        async with semaphore:
-            ctx = await _generate_single_context(client, file_name, doc_excerpt, chunk.text)
-            if ctx:
-                return f"{ctx}\n\n{chunk.text}"
-            return chunk.text
+    # Build the cacheable document context (same for all chunks)
+    # This gets cached on first call, subsequent calls read from cache at 10% cost
+    cached_document_block = {
+        "type": "text",
+        "text": f"Document: {file_name}\n\n{doc_excerpt}\n\n---\n",
+        "cache_control": {"type": "ephemeral"},
+    }
 
-    logger.info(f"Generating context for {len(chunks)} chunks in {file_name}")
-    results = await asyncio.gather(*[generate_with_limit(c) for c in chunks])
+    logger.info(f"Generating context for {len(chunks)} chunks in {file_name} (with prompt caching)")
 
-    # Count how many got context
-    contextualized = sum(1 for r, c in zip(results, chunks, strict=False) if r != c.text)
+    for i, chunk in enumerate(chunks):
+        # Variable part: the specific chunk to contextualize
+        chunk_block = {
+            "type": "text",
+            "text": f"Chunk to contextualize:\n{chunk.text}\n\n{CONTEXT_INSTRUCTION}",
+        }
+
+        ctx = None
+        for attempt in range(3):
+            try:
+                response = await client.messages.create(
+                    model=settings.claude_fast_model,
+                    max_tokens=100,
+                    temperature=0.0,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [cached_document_block, chunk_block],
+                        }
+                    ],
+                )
+                ctx = response.content[0].text.strip()
+
+                # Log cache performance on first chunk
+                if i == 0 and hasattr(response, "usage"):
+                    usage = response.usage
+                    cache_creation = getattr(usage, "cache_creation_input_tokens", 0)
+                    cache_read = getattr(usage, "cache_read_input_tokens", 0)
+                    if cache_creation > 0:
+                        logger.info(
+                            f"Prompt cache created: {cache_creation} tokens cached for {file_name}"
+                        )
+                    if cache_read > 0:
+                        logger.info(f"Prompt cache hit: {cache_read} tokens read from cache")
+
+                break
+            except anthropic.RateLimitError:
+                wait_time = (2**attempt) * 2
+                logger.warning(f"Rate limited, waiting {wait_time}s (attempt {attempt + 1})")
+                await asyncio.sleep(wait_time)
+                if attempt == 2:
+                    logger.error(f"Rate limit retries exhausted for chunk {i} in {file_name}")
+            except Exception as e:
+                logger.warning(f"Context generation failed for chunk {i}: {e}")
+                break
+
+        if ctx:
+            results.append(f"{ctx}\n\n{chunk.text}")
+            contextualized += 1
+        else:
+            results.append(chunk.text)
+
     logger.info(f"Generated context for {contextualized}/{len(chunks)} chunks")
 
     return results
