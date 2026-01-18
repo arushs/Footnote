@@ -288,7 +288,7 @@ export function ChatPage() {
             <AgentModeToggle
               enabled={agentMode}
               onChange={setAgentMode}
-              disabled={isIndexing || chatLoading}
+              disabled={isIndexing || chatLoading || messages.length > 0}
             />
           </div>
           <MessageInput

@@ -5,7 +5,7 @@ import {
   isValidElement,
   cloneElement,
 } from 'react'
-import { Copy, Check, ChevronRight } from 'lucide-react'
+import { Copy, Check, ChevronRight, FileText } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import ReactMarkdown from 'react-markdown'
 import type { Message, Citation } from '../../types'
@@ -180,21 +180,16 @@ interface CitationMarkerProps {
 }
 
 function CitationMarker({ citation, onClick }: CitationMarkerProps) {
-  const displayName =
-    citation.file_name.length > 20
-      ? citation.file_name.slice(0, 17) + '...'
-      : citation.file_name
-
   return (
     <Tooltip.Provider delayDuration={200}>
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           <button
             onClick={onClick}
-            className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded-full hover:bg-primary/20 transition-colors mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
+            className="inline-flex items-center p-1 text-primary/70 hover:text-primary hover:bg-primary/10 rounded transition-colors mx-0.5 focus:outline-none focus:ring-2 focus:ring-ring"
             aria-label={`Source: ${citation.file_name}`}
           >
-            {displayName}
+            <FileText className="h-3.5 w-3.5" />
           </button>
         </Tooltip.Trigger>
         <Tooltip.Portal>
