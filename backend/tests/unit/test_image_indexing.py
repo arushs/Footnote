@@ -151,8 +151,10 @@ class TestImageExtractor:
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="Description")]
 
-        with patch("app.services.file.extraction.image.get_client") as mock_get_client, \
-             patch("app.services.file.extraction.image.settings") as mock_settings:
+        with (
+            patch("app.services.file.extraction.image.get_client") as mock_get_client,
+            patch("app.services.file.extraction.image.settings") as mock_settings,
+        ):
             mock_settings.claude_fast_model = "claude-haiku-test"
             mock_client = MagicMock()
             mock_client.messages.create = AsyncMock(return_value=mock_response)
