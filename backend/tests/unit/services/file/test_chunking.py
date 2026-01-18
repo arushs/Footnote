@@ -1,12 +1,12 @@
 """Tests for the chunking service."""
 
-from app.services.chunking import (
+from app.services.file.chunking import (
     MAX_CHUNK_SIZE,
     MIN_CHUNK_SIZE,
     chunk_document,
     generate_file_preview,
 )
-from app.services.extraction import TextBlock
+from app.services.file.extraction import TextBlock
 
 
 class TestDocumentChunking:

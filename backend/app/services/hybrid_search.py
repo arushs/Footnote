@@ -1,15 +1,25 @@
-"""Hybrid search service combining vector similarity and keyword matching."""
+"""Hybrid search service combining vector similarity, keyword matching, and recency."""
 
 import logging
+import math
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.embedding import embed_query, rerank
+from app.services.file.embedding import embed_query, rerank
 
 logger = logging.getLogger(__name__)
+
+# Scoring weights (should sum to 1.0)
+VECTOR_WEIGHT = 0.6
+KEYWORD_WEIGHT = 0.2
+RECENCY_WEIGHT = 0.2
+
+# Recency decay half-life in days (score halves every N days)
+RECENCY_HALF_LIFE_DAYS = 30
 
 
 def format_vector(embedding: list[float]) -> str:
@@ -31,10 +41,6 @@ class RetrievedChunk:
     rerank_score: float | None = None
 
 
-# RRF fusion constant (higher values give more weight to top results)
-RRF_K = 60
-
-
 @dataclass
 class HybridSearchResult:
     """Result from hybrid search with combined scoring."""
@@ -45,9 +51,11 @@ class HybridSearchResult:
     google_file_id: str
     chunk_text: str
     location: dict
-    vector_rank: int | None
-    keyword_rank: int | None
-    rrf_score: float
+    file_updated_at: datetime | None
+    vector_score: float
+    keyword_score: float
+    recency_score: float
+    weighted_score: float
     rerank_score: float | None = None
 
 
@@ -64,12 +72,72 @@ def build_or_query(query: str) -> str:
     return " OR ".join(words)
 
 
+def calculate_recency_score(updated_at: datetime | None, half_life_days: float = RECENCY_HALF_LIFE_DAYS) -> float:
+    """Calculate recency score using exponential decay.
+
+    Score of 1.0 for now, 0.5 after half_life_days, 0.25 after 2*half_life_days, etc.
+
+    Args:
+        updated_at: When the file was last updated
+        half_life_days: Number of days for score to halve
+
+    Returns:
+        Recency score between 0 and 1
+    """
+    if updated_at is None:
+        return 0.5  # Default score for unknown dates
+
+    now = datetime.now(timezone.utc)
+    # Ensure updated_at is timezone-aware
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+    age_days = (now - updated_at).total_seconds() / 86400  # Convert to days
+
+    if age_days < 0:
+        return 1.0  # Future dates get max score
+
+    # Exponential decay: score = 0.5^(age/half_life) = e^(-ln(2) * age / half_life)
+    decay_rate = math.log(2) / half_life_days
+    return math.exp(-decay_rate * age_days)
+
+
+def calculate_weighted_score(
+    vector_score: float,
+    keyword_score: float,
+    recency_score: float,
+    vector_weight: float = VECTOR_WEIGHT,
+    keyword_weight: float = KEYWORD_WEIGHT,
+    recency_weight: float = RECENCY_WEIGHT,
+) -> float:
+    """Calculate combined weighted score.
+
+    All input scores should be normalized to 0-1 range.
+
+    Args:
+        vector_score: Cosine similarity score (0-1)
+        keyword_score: Normalized keyword match score (0-1)
+        recency_score: Recency decay score (0-1)
+        vector_weight: Weight for vector similarity
+        keyword_weight: Weight for keyword matching
+        recency_weight: Weight for recency
+
+    Returns:
+        Combined weighted score
+    """
+    return (
+        vector_weight * vector_score +
+        keyword_weight * keyword_score +
+        recency_weight * recency_score
+    )
+
+
 async def keyword_search(
     db: AsyncSession,
     query: str,
     folder_id: uuid.UUID,
     top_k: int = 30,
-) -> list[tuple[uuid.UUID, int]]:
+) -> list[tuple[uuid.UUID, float]]:
     """
     Perform full-text keyword search using tsvector.
 
@@ -80,7 +148,7 @@ async def keyword_search(
         top_k: Number of results to return
 
     Returns:
-        List of (chunk_id, rank) tuples ordered by relevance
+        List of (chunk_id, normalized_score) tuples ordered by relevance
     """
     # Convert query to OR-based format for more forgiving matching
     or_query = build_or_query(query)
@@ -90,12 +158,12 @@ async def keyword_search(
         text("""
             SELECT
                 c.id as chunk_id,
-                ROW_NUMBER() OVER (ORDER BY ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) DESC) as rank
+                ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) as score
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
               AND c.search_vector @@ websearch_to_tsquery('english', :query)
-            ORDER BY ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) DESC
+            ORDER BY score DESC
             LIMIT :top_k
         """),
         {
@@ -105,17 +173,26 @@ async def keyword_search(
         },
     )
 
-    return [(row.chunk_id, row.rank) for row in result.fetchall()]
+    rows = result.fetchall()
+    if not rows:
+        return []
+
+    # Normalize scores to 0-1 range using max score
+    max_score = max(row.score for row in rows) if rows else 1.0
+    if max_score == 0:
+        max_score = 1.0
+
+    return [(row.chunk_id, row.score / max_score) for row in rows]
 
 
-async def vector_search_with_rank(
+async def vector_search_with_scores(
     db: AsyncSession,
     query_embedding: list[float],
     folder_id: uuid.UUID,
     top_k: int = 30,
-) -> list[tuple[uuid.UUID, int, dict]]:
+) -> list[tuple[uuid.UUID, float, dict]]:
     """
-    Perform vector similarity search returning ranks.
+    Perform vector similarity search returning similarity scores.
 
     Args:
         db: Database session
@@ -124,7 +201,7 @@ async def vector_search_with_rank(
         top_k: Number of results to return
 
     Returns:
-        List of (chunk_id, rank, chunk_data) tuples ordered by similarity
+        List of (chunk_id, similarity_score, chunk_data) tuples ordered by similarity
     """
     result = await db.execute(
         text("""
@@ -135,9 +212,8 @@ async def vector_search_with_rank(
                 c.location,
                 f.file_name,
                 f.google_file_id,
-                ROW_NUMBER() OVER (
-                    ORDER BY c.chunk_embedding <=> CAST(:query_embedding AS vector)
-                ) as rank
+                f.updated_at as file_updated_at,
+                1 - (c.chunk_embedding <=> CAST(:query_embedding AS vector)) as similarity
             FROM chunks c
             JOIN files f ON c.file_id = f.id
             WHERE f.folder_id = :folder_id
@@ -155,24 +231,18 @@ async def vector_search_with_rank(
     return [
         (
             row.chunk_id,
-            row.rank,
+            max(0.0, row.similarity),  # Clamp to non-negative
             {
                 "file_id": row.file_id,
                 "chunk_text": row.chunk_text,
                 "location": row.location,
                 "file_name": row.file_name,
                 "google_file_id": row.google_file_id,
+                "file_updated_at": row.file_updated_at,
             },
         )
         for row in result.fetchall()
     ]
-
-
-def rrf_score(rank: int | None, k: int = RRF_K) -> float:
-    """Calculate Reciprocal Rank Fusion score."""
-    if rank is None:
-        return 0.0
-    return 1.0 / (k + rank)
 
 
 async def hybrid_search(
@@ -182,10 +252,9 @@ async def hybrid_search(
     top_k: int = 30,
 ) -> list[HybridSearchResult]:
     """
-    Perform hybrid search combining vector similarity and keyword matching.
+    Perform hybrid search combining vector similarity, keyword matching, and recency.
 
-    Uses Reciprocal Rank Fusion (RRF) to combine results from both methods.
-    RRF score = 1/(k + rank_vector) + 1/(k + rank_keyword)
+    Uses weighted scoring: score = w1*vector + w2*keyword + w3*recency
 
     Args:
         db: Database session
@@ -194,34 +263,33 @@ async def hybrid_search(
         top_k: Number of results to return
 
     Returns:
-        List of hybrid search results ordered by combined RRF score
+        List of hybrid search results ordered by combined weighted score
     """
-    # Run both searches in parallel conceptually (both are async)
     logger.info(
         f"[HYBRID] Starting hybrid search for query: '{query[:50]}...' in folder {folder_id}"
     )
     query_embedding = await embed_query(query)
     logger.info(f"[HYBRID] Got embedding (length: {len(query_embedding)})")
 
-    vector_results = await vector_search_with_rank(db, query_embedding, folder_id, top_k)
+    vector_results = await vector_search_with_scores(db, query_embedding, folder_id, top_k)
     logger.info(f"[HYBRID] Vector search returned {len(vector_results)} results")
 
     keyword_results = await keyword_search(db, query, folder_id, top_k)
     logger.info(f"[HYBRID] Keyword search returned {len(keyword_results)} results")
 
     # Build lookup maps
-    keyword_ranks: dict[uuid.UUID, int] = {chunk_id: rank for chunk_id, rank in keyword_results}
+    keyword_scores: dict[uuid.UUID, float] = {chunk_id: score for chunk_id, score in keyword_results}
 
-    # Build combined results
+    # Build combined results from vector search
     chunk_data: dict[uuid.UUID, dict] = {}
-    vector_ranks: dict[uuid.UUID, int] = {}
+    vector_scores: dict[uuid.UUID, float] = {}
 
-    for chunk_id, rank, data in vector_results:
-        vector_ranks[chunk_id] = rank
+    for chunk_id, similarity, data in vector_results:
+        vector_scores[chunk_id] = similarity
         chunk_data[chunk_id] = data
 
     # For keyword-only results, fetch their data
-    keyword_only_ids = set(keyword_ranks.keys()) - set(vector_ranks.keys())
+    keyword_only_ids = set(keyword_scores.keys()) - set(vector_scores.keys())
     if keyword_only_ids:
         result = await db.execute(
             text("""
@@ -231,7 +299,8 @@ async def hybrid_search(
                     c.chunk_text,
                     c.location,
                     f.file_name,
-                    f.google_file_id
+                    f.google_file_id,
+                    f.updated_at as file_updated_at
                 FROM chunks c
                 JOIN files f ON c.file_id = f.id
                 WHERE c.id = ANY(:chunk_ids)
@@ -245,19 +314,24 @@ async def hybrid_search(
                 "location": row.location,
                 "file_name": row.file_name,
                 "google_file_id": row.google_file_id,
+                "file_updated_at": row.file_updated_at,
             }
 
     # Combine all chunk IDs
-    all_chunk_ids = set(vector_ranks.keys()) | set(keyword_ranks.keys())
+    all_chunk_ids = set(vector_scores.keys()) | set(keyword_scores.keys())
 
-    # Calculate RRF scores and build results
+    # Calculate weighted scores and build results
     results = []
     for chunk_id in all_chunk_ids:
-        v_rank = vector_ranks.get(chunk_id)
-        k_rank = keyword_ranks.get(chunk_id)
-        combined_score = rrf_score(v_rank) + rrf_score(k_rank)
+        v_score = vector_scores.get(chunk_id, 0.0)
+        k_score = keyword_scores.get(chunk_id, 0.0)
 
         data = chunk_data.get(chunk_id, {})
+        file_updated_at = data.get("file_updated_at")
+        r_score = calculate_recency_score(file_updated_at)
+
+        weighted = calculate_weighted_score(v_score, k_score, r_score)
+
         results.append(
             HybridSearchResult(
                 chunk_id=chunk_id,
@@ -266,14 +340,16 @@ async def hybrid_search(
                 google_file_id=data.get("google_file_id", ""),
                 chunk_text=data.get("chunk_text", ""),
                 location=data.get("location", {}),
-                vector_rank=v_rank,
-                keyword_rank=k_rank,
-                rrf_score=combined_score,
+                file_updated_at=file_updated_at,
+                vector_score=v_score,
+                keyword_score=k_score,
+                recency_score=r_score,
+                weighted_score=weighted,
             )
         )
 
-    # Sort by RRF score descending
-    results.sort(key=lambda x: x.rrf_score, reverse=True)
+    # Sort by weighted score descending
+    results.sort(key=lambda x: x.weighted_score, reverse=True)
     return results[:top_k]
 
 
@@ -287,7 +363,7 @@ async def hybrid_retrieve_and_rerank(
     """
     Hybrid retrieval with reranking.
 
-    Combines vector + keyword search via RRF, then reranks the top results.
+    Combines vector + keyword + recency via weighted scoring, then reranks the top results.
 
     Args:
         db: Database session
@@ -299,7 +375,7 @@ async def hybrid_retrieve_and_rerank(
     Returns:
         List of retrieved chunks ordered by rerank score
     """
-    # Stage 1: Hybrid search
+    # Stage 1: Hybrid search with weighted scoring
     candidates = await hybrid_search(db, query, folder_id, initial_top_k)
 
     if not candidates:
@@ -314,7 +390,7 @@ async def hybrid_retrieve_and_rerank(
             google_file_id=c.google_file_id,
             chunk_text=c.chunk_text,
             location=c.location,
-            similarity_score=c.rrf_score,
+            similarity_score=c.weighted_score,
         )
         for c in candidates
     ]

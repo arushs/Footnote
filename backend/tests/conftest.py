@@ -430,8 +430,8 @@ def mock_anthropic():
 @pytest.fixture
 def mock_extraction_service():
     """Mock text extraction service."""
-    with patch("app.services.extraction.ExtractionService") as MockExtraction:
-        from app.services.extraction import ExtractedDocument, TextBlock
+    with patch("app.services.file.extraction.ExtractionService") as MockExtraction:
+        from app.services.file.extraction import ExtractedDocument, TextBlock
 
         mock_instance = MagicMock()
         MockExtraction.return_value = mock_instance

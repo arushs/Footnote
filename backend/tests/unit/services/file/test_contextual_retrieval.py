@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.chunking import DocumentChunk
+from app.services.file.chunking import DocumentChunk
 
 
 @pytest.mark.asyncio

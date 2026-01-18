@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.embedding import (
+from app.services.file.embedding import (
     EMBEDDING_DIM,
     EMBEDDING_MODEL,
     RERANK_MODEL,
@@ -30,7 +30,7 @@ class TestEmbedDocument:
         """Embedding should return 768-dimensional vector."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -45,7 +45,7 @@ class TestEmbedDocument:
         """Document embedding should use search_document prefix."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -78,7 +78,7 @@ class TestEmbedQuery:
         """Query embedding should return 768-dimensional vector."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -93,7 +93,7 @@ class TestEmbedQuery:
         """Query embedding should use search_query prefix."""
         mock_response = create_mock_embedding_response([[0.1] * EMBEDDING_DIM])
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -126,7 +126,7 @@ class TestEmbedDocumentsBatch:
             ]
         )
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client
@@ -154,7 +154,7 @@ class TestEmbedDocumentsBatch:
             ]
         )
 
-        with patch("app.services.embedding._get_client") as mock_get_client:
+        with patch("app.services.file.embedding._get_client") as mock_get_client:
             mock_client = MagicMock()
             mock_client.embeddings.create = AsyncMock(return_value=mock_response)
             mock_get_client.return_value = mock_client

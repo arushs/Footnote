@@ -6,7 +6,7 @@ import logging
 from mistralai import Mistral
 
 from app.config import settings
-from app.services.extraction.models import ExtractedDocument, TextBlock
+from app.services.file.extraction.models import ExtractedDocument, TextBlock
 
 logger = logging.getLogger(__name__)
 

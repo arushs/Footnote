@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models import File, Folder, IndexingJob, Session
-from app.services.extraction import TextBlock
+from app.services.file.extraction import TextBlock
 from app.worker import (
     claim_next_job,
     format_vector,
@@ -366,7 +366,7 @@ class TestChunkingIntegration:
 
     def test_chunk_document_creates_chunks(self):
         """Test that chunk_document creates chunks from blocks."""
-        from app.services.chunking import chunk_document
+        from app.services.file.chunking import chunk_document
 
         blocks = [
             TextBlock(
@@ -391,7 +391,7 @@ class TestChunkingIntegration:
 
     def test_generate_file_preview_creates_preview(self):
         """Test that generate_file_preview creates a preview string."""
-        from app.services.chunking import generate_file_preview
+        from app.services.file.chunking import generate_file_preview
 
         blocks = [
             TextBlock(

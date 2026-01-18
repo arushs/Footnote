@@ -30,7 +30,7 @@ from app.models import (
 )
 from app.routes.auth import get_current_session
 from app.services.chat import agentic_rag, standard_rag
-from app.services.embedding import rerank
+from app.services.file.embedding import rerank
 from app.services.folder_sync import sync_folder_if_needed
 
 router = APIRouter()

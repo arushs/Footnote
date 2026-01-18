@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from app.services.extraction import TextBlock
+from app.services.file.extraction import TextBlock
 
 
 @dataclass

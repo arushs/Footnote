@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Chunk, File, Folder, IndexingJob
-from app.services.extraction import ExtractionService
+from app.services.file.extraction import ExtractionService
 
 logger = logging.getLogger(__name__)
 

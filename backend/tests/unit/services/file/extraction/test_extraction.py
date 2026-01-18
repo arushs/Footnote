@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.extraction import (
+from app.services.file.extraction import (
     ExtractedDocument,
     ExtractionService,
     GoogleDocsExtractor,
