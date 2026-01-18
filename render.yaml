@@ -20,7 +20,7 @@ services:
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     pullRequestPreviewsEnabled: true
-    customDomains:
+    domains:
       - app.footnote.one
     headers:
       - path: /*
@@ -43,7 +43,7 @@ services:
     startCommand: cd backend && uv run uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
     preDeployCommand: cd backend && uv run bin/migrate
-    customDomains:
+    domains:
       - api.footnote.one
     envVars:
       - key: DATABASE_URL
