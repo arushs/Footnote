@@ -8,6 +8,7 @@ from app.config import settings
 from app.database import init_db
 from app.routes import auth, chat, folders, health
 from app.services.anthropic import close_client as close_anthropic_client
+from app.services.posthog import shutdown_posthog
 
 # Configure logging
 logging.basicConfig(
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
     yield
     # Shutdown - cleanup SDK clients
     await close_anthropic_client()
+    shutdown_posthog()
 
 
 app = FastAPI(
