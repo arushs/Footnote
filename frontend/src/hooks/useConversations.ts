@@ -17,7 +17,9 @@ export function useConversations({ folderId, enabled = true }: UseConversationsO
 
     try {
       setIsLoading(true)
-      const response = await fetch(apiUrl(`/api/folders/${folderId}/conversations`))
+      const response = await fetch(apiUrl(`/api/folders/${folderId}/conversations`), {
+        credentials: 'include',
+      })
       if (!response.ok) throw new Error('Failed to fetch conversations')
       const data: Conversation[] = await response.json()
       setConversations(data)
