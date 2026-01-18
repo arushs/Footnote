@@ -1,8 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import init_db
@@ -15,6 +17,22 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """Validate Origin header for state-changing requests to prevent CSRF."""
+
+    async def dispatch(self, request: Request, call_next):
+        # Only check state-changing methods
+        if request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            origin = request.headers.get("origin")
+            # Allow requests without Origin (same-origin, non-browser)
+            if origin and origin not in settings.cors_origins:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "CSRF validation failed: invalid origin"},
+                )
+        return await call_next(request)
 
 
 @asynccontextmanager
@@ -33,6 +51,9 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# CSRF protection - validates Origin header for state-changing requests
+app.add_middleware(CSRFProtectionMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
