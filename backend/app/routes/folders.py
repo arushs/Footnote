@@ -11,6 +11,7 @@ from app.models import File, Folder
 from app.models import Session as DbSession
 from app.routes.auth import get_current_session
 from app.services.drive import DriveService
+from app.services.folder_sync import sync_folder_if_needed
 from app.tasks.indexing import process_indexing_job
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,14 @@ class FolderStatus(BaseModel):
 
 class FolderListResponse(BaseModel):
     folders: list[FolderResponse]
+
+
+class SyncResult(BaseModel):
+    synced: bool
+    added: int = 0
+    modified: int = 0
+    deleted: int = 0
+    reason: str | None = None
 
 
 @router.get("", response_model=FolderListResponse)
@@ -201,4 +210,43 @@ async def get_folder_status(
         status=folder.index_status,
         files_total=folder.files_total,
         files_indexed=folder.files_indexed,
+    )
+
+
+@router.post("/{folder_id}/sync", response_model=SyncResult)
+async def sync_folder(
+    folder_id: str,
+    session: DbSession = Depends(get_current_session),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trigger background sync with Google Drive."""
+    try:
+        folder_uuid = uuid.UUID(folder_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid folder ID") from None
+
+    result = await db.execute(
+        select(Folder).where(
+            Folder.id == folder_uuid,
+            Folder.user_id == session.user_id,
+        )
+    )
+    folder = result.scalar_one_or_none()
+
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+
+    sync_result = await sync_folder_if_needed(
+        db=db,
+        folder=folder,
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+    )
+
+    return SyncResult(
+        synced=sync_result.get("synced", False),
+        added=sync_result.get("added", 0),
+        modified=sync_result.get("modified", 0),
+        deleted=sync_result.get("deleted", 0),
+        reason=sync_result.get("reason"),
     )

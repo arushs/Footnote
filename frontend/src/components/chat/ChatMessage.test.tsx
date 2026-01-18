@@ -100,12 +100,13 @@ describe('ChatMessage', () => {
   })
 
   describe('Citation Rendering', () => {
-    it('should render citation marker with file name', () => {
+    it('should render citation marker with file name in aria-label', () => {
       render(<ChatMessage message={assistantMessage} />)
 
+      // Citation button shows icon only; file name is in aria-label for accessibility
       const citationButton = screen.getByRole('button', { name: /Source: research-paper.pdf/ })
       expect(citationButton).toBeInTheDocument()
-      expect(citationButton).toHaveTextContent('research-paper.pdf')
+      expect(citationButton.querySelector('.lucide-file-text')).toBeInTheDocument()
     })
 
     it('should render multiple citations with file names', () => {
@@ -156,7 +157,7 @@ describe('ChatMessage', () => {
       expect(screen.getByText(/\[2\]/)).toBeInTheDocument()
     })
 
-    it('should truncate long file names over 20 chars', () => {
+    it('should handle long file names in aria-label', () => {
       const messageWithLongFileName: Message = {
         id: 'msg-5',
         role: 'assistant',
@@ -169,12 +170,12 @@ describe('ChatMessage', () => {
 
       render(<ChatMessage message={messageWithLongFileName} />)
 
-      // Button should show truncated name but aria-label should have full name
+      // Full file name should be in aria-label; button displays icon only
       const citationButton = screen.getByRole('button', {
         name: /Source: this-is-a-very-long-file-name.pdf/,
       })
       expect(citationButton).toBeInTheDocument()
-      expect(citationButton).toHaveTextContent('this-is-a-very-lo...')
+      expect(citationButton.querySelector('.lucide-file-text')).toBeInTheDocument()
     })
   })
 

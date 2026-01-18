@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { addToast } from '../components/ui/toast'
 import type { FolderStatus, Folder } from '../types'
 
 interface UseFolderStatusOptions {
@@ -103,6 +104,37 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
     }
     wasIndexingRef.current = isIndexing
   }, [isIndexing, isReady, onIndexingComplete])
+
+  // Trigger background sync on folder switch (only for ready folders)
+  useEffect(() => {
+    if (!enabled || !folderId || !isReady) return
+
+    const controller = new AbortController()
+
+    fetch(`/api/folders/${folderId}/sync`, {
+      method: 'POST',
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        if (result.synced) {
+          const changes = (result.added ?? 0) + (result.modified ?? 0)
+          if (changes > 0) {
+            addToast(`Found ${changes} new file${changes > 1 ? 's' : ''}`, 'info')
+            // Refetch folder data to update counts
+            fetchFolder()
+          }
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.error('Background sync failed:', err)
+        }
+      })
+
+    return () => controller.abort()
+  }, [enabled, folderId, isReady, fetchFolder])
 
   return {
     folder,
