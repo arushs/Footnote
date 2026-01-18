@@ -26,7 +26,7 @@ const mockCitation = {
   google_drive_url: 'https://drive.google.com/file/d/abc123/view',
 }
 
-test.describe('Talk to Folder - Happy Path', () => {
+test.describe('Footnote - Happy Path', () => {
   test.beforeEach(async ({ page }) => {
     // Mock authenticated user
     await page.route('**/api/auth/me', async (route) => {

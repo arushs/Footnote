@@ -164,7 +164,7 @@ describe('Header', () => {
         </RouterWrapper>
       )
 
-      expect(screen.getByText('Talk to a Folder')).toBeInTheDocument()
+      expect(screen.getByText('Footnote')).toBeInTheDocument()
     })
 
     it('should render custom title', () => {

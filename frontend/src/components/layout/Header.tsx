@@ -25,7 +25,7 @@ interface HeaderActionsProps {
  * @example
  * ```tsx
  * <Header>
- *   <Header.Brand title="Talk to a Folder" />
+ *   <Header.Brand title="Footnote" />
  *   <Header.Actions>
  *     <UserMenu />
  *   </Header.Actions>
@@ -46,7 +46,7 @@ export function Header({ children, className }: HeaderProps) {
   )
 }
 
-function HeaderBrand({ title = 'Talk to a Folder', backTo, backLabel }: HeaderBrandProps) {
+function HeaderBrand({ title = 'Footnote', backTo, backLabel }: HeaderBrandProps) {
   const navigate = useNavigate()
 
   return (

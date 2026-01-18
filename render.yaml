@@ -1,4 +1,4 @@
-# Render Blueprint for Talk-to-Folder Application
+# Render Blueprint for Footnote Application
 # https://render.com/docs/blueprint-spec
 #
 # IMPORTANT: After deploying, enable the pgvector extension on your database:
@@ -9,12 +9,12 @@
 services:
   # Redis - Message broker for Celery
   - type: redis
-    name: talk-to-folder-redis
+    name: footnote-redis
     plan: starter
     ipAllowList: []
   # Frontend - Static React Application
   - type: web
-    name: talk-to-folder-web
+    name: footnote-web
     runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
@@ -29,11 +29,11 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://talk-to-folder-api.onrender.com
+        value: https://footnote-api.onrender.com
 
   # Backend - FastAPI Web Service
   - type: web
-    name: talk-to-folder-api
+    name: footnote-api
     runtime: python
     plan: starter
     buildCommand: cd backend && pip install -e .
@@ -42,19 +42,19 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: talk-to-folder-db
+          name: footnote-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: talk-to-folder-redis
+          name: footnote-redis
           property: connectionString
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GOOGLE_REDIRECT_URI
-        value: https://talk-to-folder-api.onrender.com/api/auth/google/callback
+        value: https://footnote-api.onrender.com/api/auth/google/callback
       - key: FIREWORKS_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
@@ -64,13 +64,13 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: FRONTEND_URL
-        value: https://talk-to-folder-web.onrender.com
+        value: https://footnote-web.onrender.com
       - key: CORS_ORIGINS
-        value: '["https://talk-to-folder-web.onrender.com"]'
+        value: '["https://footnote-web.onrender.com"]'
 
   # Celery Worker - Background Indexing Jobs
   - type: worker
-    name: talk-to-folder-celery-worker
+    name: footnote-celery-worker
     runtime: python
     plan: starter
     buildCommand: cd backend && pip install -e .
@@ -85,12 +85,12 @@ services:
     envVars:
       - key: DATABASE_URL
         fromDatabase:
-          name: talk-to-folder-db
+          name: footnote-db
           property: connectionString
       - key: REDIS_URL
         fromService:
           type: redis
-          name: talk-to-folder-redis
+          name: footnote-redis
           property: connectionString
       - key: GOOGLE_CLIENT_ID
         sync: false
@@ -104,6 +104,6 @@ services:
         sync: false
 
 databases:
-  - name: talk-to-folder-db
+  - name: footnote-db
     plan: basic-256mb  # Options: free, basic-256mb, basic-1gb, basic-4gb, pro-4gb, etc.
     ipAllowList: []
