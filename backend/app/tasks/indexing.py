@@ -146,7 +146,9 @@ async def _refresh_session_token(session: Session, db) -> Session | None:
         )
 
         if token_response.status_code != 200:
-            logger.warning(f"Failed to refresh token for session {session.id}: {token_response.text}")
+            logger.warning(
+                f"Failed to refresh token for session {session.id}: {token_response.text}"
+            )
             return None
 
         tokens = token_response.json()
