@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.file.embedding import embed_query, rerank
+from app.utils import format_vector
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +21,6 @@ RECENCY_WEIGHT = 0.2
 
 # Recency decay half-life in days (score halves every N days)
 RECENCY_HALF_LIFE_DAYS = 30
-
-
-def format_vector(embedding: list[float]) -> str:
-    """Format embedding list as PostgreSQL vector string."""
-    return "[" + ",".join(str(x) for x in embedding) + "]"
 
 
 @dataclass

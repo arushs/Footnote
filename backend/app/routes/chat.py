@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.database import get_db
 from app.services.anthropic import get_client
+from app.utils import build_google_drive_url, format_location
 
 logger = logging.getLogger(__name__)
 from app.models import (
@@ -88,22 +89,6 @@ class ConversationResponse(BaseModel):
     title: str | None
     created_at: str
     updated_at: str
-
-
-def format_location(location: dict, mime_type: str) -> str:
-    """Format chunk location into a human-readable string."""
-    if "page" in location:
-        return f"Page {location['page']}"
-    if "headings" in location and location["headings"]:
-        return " > ".join(location["headings"])
-    if "index" in location:
-        return f"Section {location['index'] + 1}"
-    return "Document"
-
-
-def build_google_drive_url(google_file_id: str) -> str:
-    """Build a Google Drive URL for a file."""
-    return f"https://drive.google.com/file/d/{google_file_id}/view"
 
 
 async def retrieve_chunks(
@@ -195,7 +180,7 @@ def build_context(chunks_with_files: list[tuple[Chunk, File, float]]) -> str:
     """Build context string from chunks for the LLM."""
     context_parts = []
     for i, (chunk, file, _) in enumerate(chunks_with_files):
-        location = format_location(chunk.location, file.mime_type)
+        location = format_location(chunk.location)
         context_parts.append(f"[{i + 1}] From '{file.file_name}' ({location}):\n{chunk.chunk_text}")
     return "\n\n---\n\n".join(context_parts)
 
@@ -288,7 +273,7 @@ async def generate_streaming_response(
     for num in citation_numbers:
         if 1 <= num <= len(top_chunks):
             chunk, file, _ = top_chunks[num - 1]
-            location = format_location(chunk.location, file.mime_type)
+            location = format_location(chunk.location)
             excerpt = (
                 chunk.chunk_text[:200] + "..." if len(chunk.chunk_text) > 200 else chunk.chunk_text
             )
@@ -549,13 +534,13 @@ async def get_chunk_context(
     return {
         "chunk_id": str(chunk.id),
         "file_name": chunk.file.file_name,
-        "location": format_location(chunk.location, chunk.file.mime_type),
+        "location": format_location(chunk.location),
         "google_drive_url": build_google_drive_url(chunk.file.google_file_id),
         "context": [
             {
                 "chunk_id": str(c.id),
                 "text": c.chunk_text,
-                "location": format_location(c.location, chunk.file.mime_type),
+                "location": format_location(c.location),
                 "is_target": c.id == chunk.id,
             }
             for c in surrounding_chunks

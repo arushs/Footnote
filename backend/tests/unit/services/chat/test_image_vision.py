@@ -10,8 +10,8 @@ import pytest
 async def test_describe_image_with_vision_success():
     """Test successful image description with Claude vision."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -21,7 +21,7 @@ async def test_describe_image_with_vision_success():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         # Fake image content
         image_bytes = b"fake_image_content"
@@ -52,8 +52,8 @@ async def test_describe_image_with_vision_success():
 async def test_describe_image_normalizes_jpg_mime_type():
     """Test that image/jpg is normalized to image/jpeg."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -63,7 +63,7 @@ async def test_describe_image_normalizes_jpg_mime_type():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         await _describe_image_with_vision(
             image_content=b"fake",
@@ -81,8 +81,8 @@ async def test_describe_image_normalizes_jpg_mime_type():
 async def test_describe_image_handles_api_error():
     """Test graceful handling of API errors."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -90,7 +90,7 @@ async def test_describe_image_handles_api_error():
         mock_client.messages.create = AsyncMock(side_effect=Exception("API error"))
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         result = await _describe_image_with_vision(
             image_content=b"fake",
@@ -106,8 +106,8 @@ async def test_describe_image_handles_api_error():
 async def test_describe_image_encodes_base64():
     """Test that image content is properly base64 encoded."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -117,7 +117,7 @@ async def test_describe_image_encodes_base64():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         test_content = b"test image bytes"
         expected_base64 = base64.b64encode(test_content).decode("utf-8")
@@ -137,8 +137,8 @@ async def test_describe_image_encodes_base64():
 async def test_describe_image_includes_filename_in_prompt():
     """Test that the filename is included in the prompt for context."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -148,7 +148,7 @@ async def test_describe_image_includes_filename_in_prompt():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         await _describe_image_with_vision(
             image_content=b"fake",
@@ -166,8 +166,8 @@ async def test_describe_image_includes_filename_in_prompt():
 async def test_describe_image_uses_correct_model():
     """Test that the configured Claude model is used."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -177,7 +177,7 @@ async def test_describe_image_uses_correct_model():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         await _describe_image_with_vision(
             image_content=b"fake",
@@ -193,8 +193,8 @@ async def test_describe_image_uses_correct_model():
 async def test_describe_image_max_tokens_limited():
     """Test that max_tokens is set to a reasonable limit."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
@@ -204,7 +204,7 @@ async def test_describe_image_max_tokens_limited():
         mock_client.messages.create = AsyncMock(return_value=mock_response)
         mock_get_client.return_value = mock_client
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         await _describe_image_with_vision(
             image_content=b"fake",
@@ -220,12 +220,12 @@ async def test_describe_image_max_tokens_limited():
 async def test_describe_image_handles_different_mime_types():
     """Test handling of various image MIME types."""
     with (
-        patch("app.services.chat.agent.get_client") as mock_get_client,
-        patch("app.services.chat.agent.settings") as mock_settings,
+        patch("app.services.tools.get_file.get_client") as mock_get_client,
+        patch("app.services.tools.get_file.settings") as mock_settings,
     ):
         mock_settings.claude_model = "claude-sonnet-4-5-20250929"
 
-        from app.services.chat.agent import _describe_image_with_vision
+        from app.services.tools.get_file import _describe_image_with_vision
 
         mime_types = [
             ("image/png", "image/png"),
@@ -260,10 +260,10 @@ async def test_execute_tool_get_file_image():
     from unittest.mock import MagicMock
 
     with (
-        patch("app.services.chat.agent.get_user_session_for_folder") as mock_get_session,
-        patch("app.services.chat.agent.DriveService") as mock_drive_class,
-        patch("app.services.chat.agent.ExtractionService") as mock_extraction_class,
-        patch("app.services.chat.agent._describe_image_with_vision") as mock_describe,
+        patch("app.services.tools.get_file.get_user_session_for_folder") as mock_get_session,
+        patch("app.services.tools.get_file.DriveService") as mock_drive_class,
+        patch("app.services.tools.get_file.ExtractionService") as mock_extraction_class,
+        patch("app.services.tools.get_file._describe_image_with_vision") as mock_describe,
     ):
         # Setup mocks
         mock_session = MagicMock()
@@ -299,16 +299,17 @@ async def test_execute_tool_get_file_image():
         user_id = uuid.uuid4()
         indexed_chunks = []
 
-        from app.services.chat.agent import execute_tool
+        from app.services.tools import ToolContext
+        from app.services.tools.get_file import execute
 
-        result = await execute_tool(
-            "get_file",
-            {"file_id": str(mock_file.id)},
-            folder_id,
-            user_id,
-            mock_db,
-            indexed_chunks,
+        ctx = ToolContext(
+            db=mock_db,
+            folder_id=folder_id,
+            user_id=user_id,
+            indexed_chunks=indexed_chunks,
         )
+
+        result = await execute(ctx, {"file_id": str(mock_file.id)})
 
         # Verify image was processed
         assert "Image analysis" in result
