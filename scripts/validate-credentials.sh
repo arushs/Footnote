@@ -114,7 +114,7 @@ check_database_url() {
             elif [[ "$hostname" == "localhost" ]] || [[ "$hostname" == "127.0.0.1" ]]; then
                 echo -e "${RED}✗ DOCKER: DATABASE_URL uses 'localhost' instead of 'db'${NC}"
                 echo "  This will cause connection failures inside containers!"
-                echo "  DATABASE_URL should be: postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder"
+                echo "  DATABASE_URL should be: postgresql+asyncpg://postgres:postgres@db:5432/footnote"
                 ((ERRORS++))
                 return 1
             else

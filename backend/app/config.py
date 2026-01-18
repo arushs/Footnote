@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # Database
-    database_url: str = "postgresql+asyncpg://localhost/talk_to_folder"
+    database_url: str = "postgresql+asyncpg://localhost/footnote"
 
     @field_validator("database_url", mode="before")
     @classmethod

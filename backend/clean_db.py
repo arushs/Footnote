@@ -52,7 +52,7 @@ async def clean_database(preserve_auth: bool = True, dry_run: bool = False):
         dry_run: If True, only show what would be deleted without actually deleting
     """
     database_url = os.getenv(
-        "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder"
+        "DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/footnote"
     )
     engine = create_async_engine(database_url, echo=False)
 

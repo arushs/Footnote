@@ -26,7 +26,7 @@ class MockFileMetadata:
 
 
 # Override settings before importing app modules
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/talk_to_folder_test"
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://localhost/footnote_test"
 os.environ["GOOGLE_CLIENT_ID"] = "test-client-id"
 os.environ["GOOGLE_CLIENT_SECRET"] = "test-client-secret"
 os.environ["GOOGLE_REDIRECT_URI"] = "http://localhost:8000/api/auth/google/callback"

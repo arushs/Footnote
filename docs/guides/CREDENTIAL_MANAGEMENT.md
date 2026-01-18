@@ -5,8 +5,8 @@
 The root `.env` file uses `localhost` for the DATABASE_URL while `docker-compose.yml` uses `db` (the Docker service name) for hostname. This mismatch causes PostgreSQL authentication failures when running in containers.
 
 **Root Cause:**
-- Root `.env`: `postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder`
-- Docker-compose backend service: `postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder`
+- Root `.env`: `postgresql+asyncpg://postgres:postgres@localhost:5432/footnote`
+- Docker-compose backend service: `postgresql+asyncpg://postgres:postgres@db:5432/footnote`
 - The `localhost` reference breaks inside containers where services communicate via service names
 
 ---
@@ -95,17 +95,17 @@ environment:
 # docker-compose.yml services
 backend:
   environment:
-    DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder}
+    DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@db:5432/footnote}
     # Other credentials...
 ```
 
 **Create `.env.docker`:**
 ```
 # Database credentials for Docker
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/footnote
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
-POSTGRES_DB=talk_to_folder
+POSTGRES_DB=footnote
 
 # Other credentials use same format as root .env
 GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -146,7 +146,7 @@ fi
 
 # Extract DATABASE_URL from root .env
 ROOT_DB_URL=$(grep "DATABASE_URL=" .env | cut -d'=' -f2)
-DOCKER_DB_URL="postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder"
+DOCKER_DB_URL="postgresql+asyncpg://postgres:postgres@db:5432/footnote"
 
 # Extract hostname from URL
 extract_hostname() {
@@ -163,7 +163,7 @@ if [ "$1" == "docker" ]; then
         echo "This may cause connection issues in Docker containers."
         echo ""
         echo "Expected in docker-compose.yml:"
-        echo "DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder"
+        echo "DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/footnote"
         echo ""
         echo "But your .env has:"
         echo "DATABASE_URL=$ROOT_DB_URL"
@@ -265,7 +265,7 @@ frontend/.env.example
 # LOCAL: localhost
 # DOCKER: db
 # PRODUCTION: your-rds-endpoint.aws.com
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/footnote
 
 # Required for authentication
 GOOGLE_CLIENT_ID=your-value
@@ -281,12 +281,12 @@ GOOGLE_CLIENT_SECRET=your-value
 
 ### Local Development
 Use `localhost` for all service connections:
-- DATABASE_URL: `postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder`
+- DATABASE_URL: `postgresql+asyncpg://postgres:postgres@localhost:5432/footnote`
 - REDIS_URL: `redis://localhost:6379` (if applicable)
 
 ### Docker Environment
 Use Docker service names for inter-service communication:
-- DATABASE_URL: `postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder`
+- DATABASE_URL: `postgresql+asyncpg://postgres:postgres@db:5432/footnote`
 - Backend to Frontend: `http://frontend:3000`
 
 ### Production
@@ -309,7 +309,7 @@ class Settings(BaseSettings):
     """Application configuration from environment variables"""
 
     # Database
-    database_url: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder")
+    database_url: str = Field(default="postgresql+asyncpg://postgres:postgres@localhost:5432/footnote")
     running_in_docker: bool = Field(default=False)
 
     # API Keys
@@ -405,7 +405,7 @@ echo "Created .env files from examples"
 echo ""
 echo "Now you need to fill in the values:"
 echo "  1. Open .env and add your API keys"
-echo "  2. For local development, use DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder"
+echo "  2. For local development, use DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote"
 echo "  3. Run: npm run db:setup  (to initialize the database)"
 echo ""
 echo "To start the application:"
@@ -603,14 +603,14 @@ services:
 **Local Development:**
 ```bash
 # Ensure .env uses localhost
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote
 npm run dev
 ```
 
 **Docker:**
 ```bash
 # Ensure .env or .env.docker uses 'db' service name
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/footnote
 ./scripts/validate-credentials.sh docker
 docker-compose up
 ```

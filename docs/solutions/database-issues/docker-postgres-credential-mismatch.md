@@ -56,13 +56,13 @@ db:
   environment:
     POSTGRES_USER: postgres
     POSTGRES_PASSWORD: postgres
-    POSTGRES_DB: talk_to_folder
+    POSTGRES_DB: footnote
 ```
 
 But the root `.env` file had different credentials:
 
 ```
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/footnote
 ```
 
 When the backend tried to connect using the `user` role, PostgreSQL rejected it because only the `postgres` role exists.
@@ -75,12 +75,12 @@ Edit the root `.env` file to use matching credentials:
 
 **Before:**
 ```
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/footnote
 ```
 
 **After:**
 ```
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/talk_to_folder
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/footnote
 ```
 
 Then restart services:
