@@ -99,7 +99,7 @@ services:
     command: >
       sh -c "uv sync --quiet && uv run celery -A app.celery_app worker
       --loglevel=info
-      --concurrency=4
+      --concurrency=8
       --pool=threads
       -Q celery,indexing
       --without-gossip

@@ -6,10 +6,11 @@ interface UseFolderStatusOptions {
   folderId: string
   pollInterval?: number
   onIndexingComplete?: () => void
+  onSyncComplete?: () => void
   enabled?: boolean
 }
 
-export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingComplete, enabled = true }: UseFolderStatusOptions) {
+export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingComplete, onSyncComplete, enabled = true }: UseFolderStatusOptions) {
   const [folder, setFolder] = useState<Folder | null>(null)
   const [status, setStatus] = useState<FolderStatus | null>(null)
   const wasIndexingRef = useRef(false)
@@ -122,9 +123,11 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
           const changes = (result.added ?? 0) + (result.modified ?? 0)
           if (changes > 0) {
             addToast(`Found ${changes} new file${changes > 1 ? 's' : ''}`, 'info')
-            // Refetch folder data to update counts
-            fetchFolder()
           }
+          // Refetch folder data to update last_synced_at
+          fetchFolder()
+          // Notify parent to refresh folder list
+          onSyncComplete?.()
         }
       })
       .catch((err) => {
@@ -134,7 +137,7 @@ export function useFolderStatus({ folderId, pollInterval = 2000, onIndexingCompl
       })
 
     return () => controller.abort()
-  }, [enabled, folderId, isReady, fetchFolder])
+  }, [enabled, folderId, isReady, fetchFolder, onSyncComplete])
 
   return {
     folder,

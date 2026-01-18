@@ -18,10 +18,11 @@ export function FolderDropdown({ currentFolderName }: FolderDropdownProps) {
     isCreating,
     isReady,
     addFolder,
+    refetch,
   } = useFolders()
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root onOpenChange={(open) => open && refetch()}>
       <DropdownMenu.Trigger asChild>
         <button
           className="flex items-center gap-1.5 px-2 py-1 -ml-2 rounded-md transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
