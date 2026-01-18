@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { FolderDropdown } from './FolderDropdown'
 import type { Folder } from '../../types'
+import { useFolders } from '../../hooks'
 
 // Mock useNavigate
 const mockNavigate = vi.fn()
@@ -16,18 +17,13 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
-// Mock useGooglePicker
-vi.mock('../../hooks', () => ({
-  useGooglePicker: vi.fn(() => ({
-    isLoaded: true,
-    isConfigured: true,
-    openPicker: vi.fn(),
-  })),
-}))
+// Mock useFolders hook
+const mockAddFolder = vi.fn()
+const mockRefetch = vi.fn()
 
-// Mock fetch
-const mockFetch = vi.fn()
-global.fetch = mockFetch
+vi.mock('../../hooks', () => ({
+  useFolders: vi.fn(),
+}))
 
 const renderFolderDropdown = (currentFolderName?: string) => {
   return render(
@@ -72,9 +68,17 @@ describe('FolderDropdown', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ folders: mockFolders }),
+    const readyFolders = mockFolders.filter((f) => f.index_status === 'ready')
+    const indexingFolders = mockFolders.filter((f) => f.index_status === 'indexing')
+    vi.mocked(useFolders).mockReturnValue({
+      folders: mockFolders,
+      readyFolders,
+      indexingFolders,
+      isLoading: false,
+      isCreating: false,
+      isReady: true,
+      addFolder: mockAddFolder,
+      refetch: mockRefetch,
     })
   })
 
@@ -99,14 +103,10 @@ describe('FolderDropdown', () => {
   })
 
   describe('Dropdown content', () => {
-    it('should fetch folders on mount', async () => {
+    it('should use useFolders hook', async () => {
       renderFolderDropdown('My Documents')
 
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith('/api/folders', {
-          credentials: 'include',
-        })
-      })
+      expect(useFolders).toHaveBeenCalled()
     })
 
     it('should show folders in dropdown when opened', async () => {
@@ -181,21 +181,24 @@ describe('FolderDropdown', () => {
 
   describe('Last synced formatting', () => {
     it('should show "Never synced" for null last_synced_at', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          folders: [
-            {
-              id: 'folder-1',
-              google_folder_id: 'google-1',
-              folder_name: 'Unsynced Folder',
-              index_status: 'ready',
-              files_total: 5,
-              files_indexed: 5,
-              last_synced_at: null,
-            },
-          ],
-        }),
+      const unsyncedFolder: Folder = {
+        id: 'folder-1',
+        google_folder_id: 'google-1',
+        folder_name: 'Unsynced Folder',
+        index_status: 'ready',
+        files_total: 5,
+        files_indexed: 5,
+        last_synced_at: null,
+      }
+      vi.mocked(useFolders).mockReturnValue({
+        folders: [unsyncedFolder],
+        readyFolders: [unsyncedFolder],
+        indexingFolders: [],
+        isLoading: false,
+        isCreating: false,
+        isReady: true,
+        addFolder: mockAddFolder,
+        refetch: mockRefetch,
       })
 
       const user = userEvent.setup()
@@ -212,7 +215,16 @@ describe('FolderDropdown', () => {
 
   describe('Loading state', () => {
     it('should show loading spinner while fetching folders', async () => {
-      mockFetch.mockImplementation(() => new Promise(() => {})) // Keep pending
+      vi.mocked(useFolders).mockReturnValue({
+        folders: [],
+        readyFolders: [],
+        indexingFolders: [],
+        isLoading: true,
+        isCreating: false,
+        isReady: true,
+        addFolder: mockAddFolder,
+        refetch: mockRefetch,
+      })
 
       const user = userEvent.setup()
       renderFolderDropdown('My Documents')
@@ -228,8 +240,17 @@ describe('FolderDropdown', () => {
   })
 
   describe('Error handling', () => {
-    it('should handle fetch error gracefully', async () => {
-      mockFetch.mockRejectedValue(new Error('Network error'))
+    it('should handle empty folders gracefully', async () => {
+      vi.mocked(useFolders).mockReturnValue({
+        folders: [],
+        readyFolders: [],
+        indexingFolders: [],
+        isLoading: false,
+        isCreating: false,
+        isReady: true,
+        addFolder: mockAddFolder,
+        refetch: mockRefetch,
+      })
 
       renderFolderDropdown('My Documents')
 

@@ -1,7 +1,7 @@
 import { Plus, MessageSquare, Clock } from 'lucide-react'
 import * as ScrollArea from '@radix-ui/react-scroll-area'
 import type { Conversation } from '../../types'
-import { cn } from '../../lib/utils'
+import { cn, formatRelativeTime } from '../../lib/utils'
 import { FolderDropdown } from './FolderDropdown'
 
 interface ChatHistoryProps {
@@ -21,21 +21,6 @@ export function ChatHistory({
   onSelectConversation,
   onNewConversation,
 }: ChatHistoryProps) {
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Just now'
-    if (diffMins < 60) return `${diffMins}m ago`
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  }
-
   return (
     <aside className="w-64 border-r border-border flex flex-col bg-muted/30" aria-label="Chat history">
       {/* Header */}
@@ -87,7 +72,6 @@ export function ChatHistory({
                   conversation={conversation}
                   isActive={conversation.id === currentConversationId}
                   onClick={() => onSelectConversation(conversation.id)}
-                  formatDate={formatDate}
                 />
               ))
             )}
@@ -108,14 +92,12 @@ interface ConversationItemProps {
   conversation: Conversation
   isActive: boolean
   onClick: () => void
-  formatDate: (date: string) => string
 }
 
 function ConversationItem({
   conversation,
   isActive,
   onClick,
-  formatDate,
 }: ConversationItemProps) {
   return (
     <button
@@ -126,7 +108,7 @@ function ConversationItem({
         isActive ? 'bg-muted' : ''
       )}
       aria-current={isActive ? 'true' : undefined}
-      aria-label={`${conversation.preview || 'New conversation'}, ${formatDate(conversation.created_at)}`}
+      aria-label={`${conversation.preview || 'New conversation'}, ${formatRelativeTime(conversation.created_at)}`}
     >
       <p className="text-sm font-medium text-foreground line-clamp-1">
         {conversation.preview || 'New conversation'}
@@ -134,7 +116,7 @@ function ConversationItem({
       <div className="flex items-center gap-1 mt-1">
         <Clock className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
         <span className="text-xs text-muted-foreground">
-          {formatDate(conversation.created_at)}
+          {formatRelativeTime(conversation.created_at)}
         </span>
       </div>
     </button>
