@@ -1,7 +1,7 @@
 """Tests for the hybrid search service."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,20 +63,20 @@ class TestRecencyScore:
 
     def test_recency_score_now(self):
         """Document updated just now should have score near 1.0."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         score = calculate_recency_score(now)
         assert score > 0.99
 
     def test_recency_score_half_life(self):
         """Document at half-life age should have score of 0.5."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         half_life_ago = now - timedelta(days=RECENCY_HALF_LIFE_DAYS)
         score = calculate_recency_score(half_life_ago)
         assert abs(score - 0.5) < 0.01
 
     def test_recency_score_two_half_lives(self):
         """Document at 2x half-life age should have score of 0.25."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         two_half_lives_ago = now - timedelta(days=2 * RECENCY_HALF_LIFE_DAYS)
         score = calculate_recency_score(two_half_lives_ago)
         assert abs(score - 0.25) < 0.01
@@ -88,7 +88,7 @@ class TestRecencyScore:
 
     def test_recency_score_future_date(self):
         """Future dates should return 1.0."""
-        future = datetime.now(timezone.utc) + timedelta(days=10)
+        future = datetime.now(UTC) + timedelta(days=10)
         score = calculate_recency_score(future)
         assert score == 1.0
 
@@ -100,13 +100,13 @@ class TestRecencyScore:
 
     def test_recency_score_old_document(self):
         """Very old document should have very low score."""
-        old = datetime.now(timezone.utc) - timedelta(days=365)
+        old = datetime.now(UTC) - timedelta(days=365)
         score = calculate_recency_score(old)
         assert score < 0.01
 
     def test_recency_score_custom_half_life(self):
         """Should work with custom half-life."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         one_week_ago = now - timedelta(days=7)
         score = calculate_recency_score(one_week_ago, half_life_days=7)
         assert abs(score - 0.5) < 0.01
@@ -170,7 +170,7 @@ class TestHybridSearchResult:
         """HybridSearchResult should store all fields."""
         chunk_id = uuid.uuid4()
         file_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         result = HybridSearchResult(
             chunk_id=chunk_id,
@@ -302,7 +302,7 @@ class TestVectorSearchWithScores:
         mock_db = AsyncMock()
         chunk_id = uuid.uuid4()
         file_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [
@@ -381,7 +381,7 @@ class TestHybridSearchIntegration:
         mock_db = AsyncMock()
         chunk_id = uuid.uuid4()
         file_id = uuid.uuid4()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         # First call: vector search
         vector_result = MagicMock()
@@ -449,7 +449,7 @@ class TestScoringBehavior:
 
     def test_recent_documents_score_higher(self):
         """Recent documents should score higher than old ones with same relevance."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old = now - timedelta(days=90)
 
         recent_recency = calculate_recency_score(now)
@@ -463,7 +463,7 @@ class TestScoringBehavior:
 
     def test_highly_relevant_old_doc_can_beat_less_relevant_new(self):
         """Highly relevant old doc can still beat less relevant new doc."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         old = now - timedelta(days=60)
 
         # Very relevant old document
