@@ -59,6 +59,23 @@ export function useFolders(options: UseFoldersOptions = {}): UseFoldersReturn {
     return () => controller.abort()
   }, [enabled, fetchFolders])
 
+  // Poll when there are indexing folders
+  useEffect(() => {
+    if (!enabled) return
+
+    const hasIndexingFolders = folders.some(
+      (f) => f.index_status === 'indexing' || f.index_status === 'pending'
+    )
+
+    if (!hasIndexingFolders) return
+
+    const intervalId = setInterval(() => {
+      fetchFolders()
+    }, 3000)
+
+    return () => clearInterval(intervalId)
+  }, [enabled, folders, fetchFolders])
+
   const addFolder = useCallback(async () => {
     if (!isConfigured || !isLoaded) {
       addToast('Google Drive integration not ready', 'error')
