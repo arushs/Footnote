@@ -60,7 +60,7 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/app
-    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: sh -c "uv sync --quiet && uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
 
   frontend:
     build:
@@ -97,13 +97,13 @@ services:
     volumes:
       - ./backend:/app
     command: >
-      uv run celery -A app.celery_app worker
+      sh -c "uv sync --quiet && uv run celery -A app.celery_app worker
       --loglevel=info
       --concurrency=20
       --pool=threads
       -Q default,indexing
       --without-gossip
-      --without-mingle
+      --without-mingle"
 
 volumes:
   postgres_data:
