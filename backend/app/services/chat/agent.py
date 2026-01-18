@@ -4,7 +4,6 @@ This is the optional agent mode - more thorough but slower.
 Uses Claude tool use for iterative search and query refinement.
 """
 
-import base64
 import json
 import logging
 import re
@@ -15,13 +14,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.models import Chunk, Conversation, File, Message, Session
+from app.models import Conversation, Message
 from app.services.anthropic import get_client
-from app.services.drive import DriveService
-from app.services.file.extraction import ExtractionService
-from app.services.hybrid_search import hybrid_search
 from app.services.posthog import LLMTimer, track_llm_generation
-from app.services.tools import ALL_TOOLS
+from app.services.tools import ALL_TOOLS, ToolContext, ToolName
+from app.services.tools import get_file as get_file_tool
+from app.services.tools import get_file_chunks as get_file_chunks_tool
+from app.services.tools import search_folder as search_folder_tool
 
 logger = logging.getLogger(__name__)
 
@@ -98,111 +97,6 @@ def build_agent_system_prompt(
 - If you can't find relevant information, say so honestly"""
 
 
-def format_location(location: dict) -> str:
-    """Format chunk location into a human-readable string."""
-    if not location:
-        return "Document"
-    if "page" in location:
-        return f"Page {location['page']}"
-    if "headings" in location and location["headings"]:
-        return " > ".join(location["headings"])
-    if "heading_path" in location and location["heading_path"]:
-        return location["heading_path"]
-    if "index" in location:
-        return f"Section {location['index'] + 1}"
-    return "Document"
-
-
-def build_google_drive_url(google_file_id: str) -> str:
-    """Build a Google Drive URL for a file."""
-    return f"https://drive.google.com/file/d/{google_file_id}/view"
-
-
-async def _describe_image_with_vision(
-    image_content: bytes,
-    mime_type: str,
-    file_name: str,
-) -> str:
-    """
-    Use Claude's vision capability to describe an image.
-
-    Args:
-        image_content: Raw image bytes
-        mime_type: Image MIME type (e.g., 'image/png')
-        file_name: Name of the image file for context
-
-    Returns:
-        Text description of the image
-    """
-    client = get_client()
-
-    # Normalize mime type for Claude API (it expects specific formats)
-    media_type = mime_type
-    if media_type == "image/jpg":
-        media_type = "image/jpeg"
-
-    try:
-        response = await client.messages.create(
-            model=settings.claude_model,
-            max_tokens=1000,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": base64.b64encode(image_content).decode("utf-8"),
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": f"This image is named '{file_name}'. Please describe this image in detail, including:\n"
-                            "1. What the image shows (objects, people, scenes, diagrams, etc.)\n"
-                            "2. Any text visible in the image (transcribe it)\n"
-                            "3. Key visual details that might be relevant for search and retrieval\n"
-                            "4. The overall context or purpose of the image if apparent",
-                        },
-                    ],
-                }
-            ],
-        )
-        return response.content[0].text
-    except Exception as e:
-        logger.error(f"[AGENT] Vision analysis failed for {file_name}: {e}")
-        return f"[Image analysis failed: {str(e)}]"
-
-
-async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) -> Session | None:
-    """Get a valid user session for accessing files in a folder."""
-    from sqlalchemy import text
-
-    result = await db.execute(
-        text("""
-            SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
-            FROM sessions s
-            JOIN folders f ON f.user_id = s.user_id
-            WHERE f.id = :folder_id
-              AND s.expires_at > NOW()
-            ORDER BY s.expires_at DESC
-            LIMIT 1
-        """),
-        {"folder_id": str(folder_id)},
-    )
-    row = result.first()
-    if row:
-        return Session(
-            id=row.id,
-            user_id=row.user_id,
-            access_token=row.access_token,
-            refresh_token=row.refresh_token,
-            expires_at=row.expires_at,
-        )
-    return None
-
-
 def extract_citations_from_text(text: str, indexed_chunks: list) -> dict:
     """Extract numbered citations from agent response.
 
@@ -236,227 +130,32 @@ def extract_citations_from_text(text: str, indexed_chunks: list) -> dict:
 async def execute_tool(
     tool_name: str,
     tool_input: dict,
-    folder_id: uuid.UUID,
-    user_id: uuid.UUID,
-    db: AsyncSession,
-    indexed_chunks: list,
+    ctx: ToolContext,
 ) -> str:
     """
     Execute an agent tool and return results.
 
-    Security: Validates folder ownership before file access.
-    indexed_chunks: A list that accumulates all chunks found, numbered for citation.
+    Dispatches to the appropriate tool module based on tool_name.
+
+    Args:
+        tool_name: Name of the tool to execute
+        tool_input: Input parameters for the tool
+        ctx: Tool context with db, folder_id, user_id, and indexed_chunks
+
+    Returns:
+        Tool execution result as a string
     """
     logger.info(f"[AGENT] Executing tool: {tool_name} with input: {tool_input}")
 
-    if tool_name == "search_folder":
-        query = tool_input.get("query", "")
-        if not query or not query.strip():
-            logger.warning("[AGENT] Empty query provided to search_folder")
-            return json.dumps({"error": "Empty query provided", "results": []})
-
-        logger.info(f"[AGENT] Searching for: '{query}' in folder {folder_id}")
-
-        try:
-            # hybrid_search already calls embed_query internally
-            results = await hybrid_search(
-                db=db,
-                query=query,
-                folder_id=folder_id,
-                user_id=user_id,
-                top_k=15,
-            )
-            logger.info(f"[AGENT] Search returned {len(results)} results")
-        except Exception as e:
-            logger.error(f"[AGENT] Search failed: {e}", exc_info=True)
-            return json.dumps({"error": f"Search failed: {str(e)}", "results": []})
-
-        # Format results with source numbers like chat mode
-        formatted_results = []
-        for r in results[:10]:
-            location = format_location(r.location)
-            excerpt = r.chunk_text[:500] if len(r.chunk_text) > 500 else r.chunk_text
-
-            # Add to indexed_chunks for citation mapping
-            source_num = len(indexed_chunks) + 1
-            indexed_chunks.append(
-                {
-                    "chunk_id": str(r.chunk_id),
-                    "file_id": str(r.file_id),
-                    "file_name": r.file_name,
-                    "location": location,
-                    "excerpt": excerpt[:200] + "..." if len(excerpt) > 200 else excerpt,
-                    "google_drive_url": build_google_drive_url(r.google_file_id),
-                }
-            )
-
-            # Format like chat mode: [N] From 'filename' (location): content
-            formatted_results.append(
-                f"[{source_num}] From '{r.file_name}' ({location}):\n{excerpt}"
-            )
-
-        if formatted_results:
-            logger.info(f"[AGENT] Top result score: {results[0].weighted_score:.4f}")
-        else:
-            logger.warning("[AGENT] No search results found")
-
-        return "\n\n---\n\n".join(formatted_results) if formatted_results else "No results found."
-
-    elif tool_name == "get_file_chunks":
-        # Fast: Return pre-indexed chunks
-        file_id_str = tool_input.get("file_id", "")
-
-        # Validate UUID format
-        try:
-            file_id = uuid.UUID(file_id_str)
-        except (ValueError, TypeError):
-            return json.dumps({"error": "Invalid file ID format"})
-
-        # SECURITY: Verify file belongs to the folder (authorization check)
-        result = await db.execute(
-            select(File).where(
-                File.id == file_id,
-                File.folder_id == folder_id,  # Authorization check
-            )
-        )
-        file = result.scalar_one_or_none()
-
-        if not file:
-            return json.dumps({"error": "File not found or access denied"})
-
-        # Fetch all chunks for the file to get full content
-        chunks_result = await db.execute(
-            select(Chunk).where(Chunk.file_id == file_id).order_by(Chunk.chunk_index)
-        )
-        chunks = chunks_result.scalars().all()
-
-        # Concatenate all chunk texts to get full document content
-        if chunks:
-            full_content = "\n\n".join(chunk.chunk_text for chunk in chunks)
-        else:
-            full_content = file.file_preview or "No content available"
-
-        # Add to indexed_chunks for citation (use next number)
-        source_num = len(indexed_chunks) + 1
-        indexed_chunks.append(
-            {
-                "chunk_id": "",
-                "file_id": str(file.id),
-                "file_name": file.file_name,
-                "location": "Full document",
-                "excerpt": (file.file_preview or "")[:200],
-                "google_drive_url": build_google_drive_url(file.google_file_id),
-            }
-        )
-
-        logger.info(
-            f"[AGENT] get_file_chunks returning {len(chunks)} chunks ({len(full_content)} chars) for {file.file_name} as [{source_num}]"
-        )
-
-        # Return formatted like chat mode
-        return f"[{source_num}] Full content of '{file.file_name}':\n\n{full_content}"
-
-    elif tool_name == "get_file":
-        # Slower: Download fresh from Google Drive
-        file_id_str = tool_input.get("file_id", "")
-
-        # Validate UUID format
-        try:
-            file_id = uuid.UUID(file_id_str)
-        except (ValueError, TypeError):
-            return json.dumps({"error": "Invalid file ID format"})
-
-        # SECURITY: Verify file belongs to the folder (authorization check)
-        result = await db.execute(
-            select(File).where(
-                File.id == file_id,
-                File.folder_id == folder_id,  # Authorization check
-            )
-        )
-        file = result.scalar_one_or_none()
-
-        if not file:
-            return json.dumps({"error": "File not found or access denied"})
-
-        # Get user session for Google Drive access
-        session = await get_user_session_for_folder(db, folder_id)
-        if not session:
-            logger.error(f"[AGENT] No valid session found for folder {folder_id}")
-            return json.dumps({"error": "No valid session - please re-authenticate"})
-
-        try:
-            # Initialize services
-            drive = DriveService(session.access_token)
-            extraction = ExtractionService()
-
-            # Download and extract based on file type
-            if extraction.is_google_doc(file.mime_type):
-                logger.info(f"[AGENT] Exporting Google Doc: {file.file_name}")
-                html_content = await drive.export_google_doc(file.google_file_id)
-                document = await extraction.extract_google_doc(html_content)
-            elif extraction.is_pdf(file.mime_type):
-                logger.info(f"[AGENT] Downloading PDF: {file.file_name}")
-                pdf_content = await drive.download_file(file.google_file_id)
-                document = await extraction.extract_pdf(pdf_content)
-            elif extraction.is_image(file.mime_type):
-                # Use Claude vision to describe the image
-                logger.info(f"[AGENT] Analyzing image with vision: {file.file_name}")
-                image_content = await drive.download_file(file.google_file_id)
-                image_description = await _describe_image_with_vision(
-                    image_content, file.mime_type, file.file_name
-                )
-
-                # Add to indexed_chunks for citation
-                source_num = len(indexed_chunks) + 1
-                indexed_chunks.append(
-                    {
-                        "chunk_id": "",
-                        "file_id": str(file.id),
-                        "file_name": file.file_name,
-                        "location": "Image analysis",
-                        "excerpt": image_description[:200] if image_description else "",
-                        "google_drive_url": build_google_drive_url(file.google_file_id),
-                    }
-                )
-
-                logger.info(
-                    f"[AGENT] get_file analyzed image ({len(image_description)} chars) for {file.file_name} as [{source_num}]"
-                )
-
-                return (
-                    f"[{source_num}] Image analysis of '{file.file_name}':\n\n{image_description}"
-                )
-            else:
-                return json.dumps({"error": f"Unsupported file type: {file.mime_type}"})
-
-            # Combine all text blocks
-            full_content = "\n\n".join(block.text for block in document.blocks)
-
-            # Add to indexed_chunks for citation
-            source_num = len(indexed_chunks) + 1
-            indexed_chunks.append(
-                {
-                    "chunk_id": "",
-                    "file_id": str(file.id),
-                    "file_name": file.file_name,
-                    "location": "Full document (Google Drive)",
-                    "excerpt": full_content[:200] if full_content else "",
-                    "google_drive_url": build_google_drive_url(file.google_file_id),
-                }
-            )
-
-            logger.info(
-                f"[AGENT] get_file downloaded fresh content ({len(full_content)} chars) for {file.file_name} as [{source_num}]"
-            )
-
-            # Return formatted like chat mode
-            return f"[{source_num}] Full content of '{file.file_name}' (from Google Drive):\n\n{full_content}"
-
-        except Exception as e:
-            logger.error(f"[AGENT] Failed to download file {file.file_name}: {e}")
-            return json.dumps({"error": f"Failed to download file: {str(e)}"})
-
-    return json.dumps({"error": f"Unknown tool: {tool_name}"})
+    match tool_name:
+        case ToolName.SEARCH_FOLDER:
+            return await search_folder_tool.execute(ctx, tool_input)
+        case ToolName.GET_FILE_CHUNKS:
+            return await get_file_chunks_tool.execute(ctx, tool_input)
+        case ToolName.GET_FILE:
+            return await get_file_tool.execute(ctx, tool_input)
+        case _:
+            return json.dumps({"error": f"Unknown tool: {tool_name}"})
 
 
 async def agentic_rag(
@@ -514,6 +213,15 @@ async def agentic_rag(
 
     # Track indexed chunks for citation extraction (numbered like chat mode)
     indexed_chunks: list = []
+
+    # Create tool context for all tool executions
+    tool_ctx = ToolContext(
+        db=db,
+        folder_id=folder_id,
+        user_id=user_id,
+        indexed_chunks=indexed_chunks,
+    )
+
     client = get_client()
     iteration = 0
     response = None
@@ -569,8 +277,10 @@ async def agentic_rag(
                     logger.info(f"Executing tool: {block.name}")
 
                     # Emit tool status
-                    tool_status = "searching" if block.name == "search_folder" else "processing"
-                    if block.name in ("get_file", "get_file_chunks"):
+                    tool_status = (
+                        "searching" if block.name == ToolName.SEARCH_FOLDER else "processing"
+                    )
+                    if block.name in (ToolName.GET_FILE, ToolName.GET_FILE_CHUNKS):
                         tool_status = "reading_file"
 
                     yield f"data: {json.dumps({'agent_status': {'phase': tool_status, 'iteration': iteration, 'tool': block.name}})}\n\n"
@@ -578,10 +288,7 @@ async def agentic_rag(
                     result = await execute_tool(
                         block.name,
                         block.input,
-                        folder_id,
-                        user_id,
-                        db,
-                        indexed_chunks,
+                        tool_ctx,
                     )
                     logger.info(f"[AGENT] Tool {block.name} result length: {len(result)} chars")
                     tool_results.append(

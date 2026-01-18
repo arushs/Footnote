@@ -11,8 +11,8 @@ from app.services.chat.agent import (
     build_agent_system_prompt,
     execute_tool,
     extract_citations_from_text,
-    format_location,
 )
+from app.utils import format_location
 
 
 class TestFormatLocation:

@@ -23,13 +23,10 @@ from app.services.drive import DriveService
 from app.services.file.chunking import DocumentChunk, chunk_document, generate_file_preview
 from app.services.file.embedding import embed_document, embed_documents_batch
 from app.services.file.extraction import ExtractionService
+from app.services.posthog import LLMTimer, track_llm_generation
+from app.utils import format_vector
 
 logger = logging.getLogger(__name__)
-
-
-def format_vector(embedding: list[float]) -> str:
-    """Format embedding list as PostgreSQL vector string."""
-    return "[" + ",".join(str(x) for x in embedding) + "]"
 
 
 CONTEXT_PROMPT = """Document: {file_name}
@@ -55,21 +52,33 @@ async def _generate_single_context(
 
     for attempt in range(max_retries):
         try:
-            response = await client.messages.create(
+            with LLMTimer() as timer:
+                response = await client.messages.create(
+                    model=settings.claude_fast_model,
+                    max_tokens=100,
+                    temperature=0.0,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": CONTEXT_PROMPT.format(
+                                file_name=file_name,
+                                document_excerpt=document_excerpt,
+                                chunk_text=chunk_text,
+                            ),
+                        }
+                    ],
+                )
+
+            # Track LLM generation in PostHog (background job, no user context)
+            track_llm_generation(
+                distinct_id="system",
                 model=settings.claude_fast_model,
-                max_tokens=100,
-                temperature=0.0,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": CONTEXT_PROMPT.format(
-                            file_name=file_name,
-                            document_excerpt=document_excerpt,
-                            chunk_text=chunk_text,
-                        ),
-                    }
-                ],
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                latency_ms=timer.elapsed_ms,
+                properties={"mode": "contextual_chunking", "file_name": file_name},
             )
+
             return response.content[0].text.strip()
         except anthropic.RateLimitError:
             wait_time = (2**attempt) * 2  # 2s, 4s, 8s

@@ -19,6 +19,7 @@ from app.models import Conversation, Message
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_retrieve_and_rerank
 from app.services.posthog import LLMTimer, track_llm_generation
+from app.utils import build_google_drive_url, format_location
 
 logger = logging.getLogger(__name__)
 
@@ -53,26 +54,6 @@ class Citation:
     location: str
     excerpt: str
     google_drive_url: str
-
-
-def format_location(location: dict) -> str:
-    """Format chunk location into a human-readable string."""
-    if not location:
-        return "Document"
-    if "page" in location:
-        return f"Page {location['page']}"
-    if "headings" in location and location["headings"]:
-        return " > ".join(location["headings"])
-    if "heading_path" in location and location["heading_path"]:
-        return location["heading_path"]
-    if "index" in location:
-        return f"Section {location['index'] + 1}"
-    return "Document"
-
-
-def build_google_drive_url(google_file_id: str) -> str:
-    """Build a Google Drive URL for a file."""
-    return f"https://drive.google.com/file/d/{google_file_id}/view"
 
 
 def build_context(chunks: list) -> str:
