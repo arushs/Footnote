@@ -1,0 +1,24 @@
+{
+  "meta": {
+    "name": "golden_set_v0",
+    "k_doc": 10
+  },
+  "items": [
+    {
+      "id": "E001",
+      "query": "Which quarter did apple have strongest performance?",
+      "gold_doc_titles": ["10-Q Q1"],
+      "requires_tool": true,
+      "expected_tool": "search_folder",
+      "tags": ["navigation"]
+    },
+    {
+      "id": "E002",
+      "query": "Can you pull up the onboarding checklist?",
+      "gold_doc_titles": [],
+      "requires_tool": true,
+      "expected_tool": "search_folder",
+      "tags": ["navigation"]
+    }
+  ]
+}

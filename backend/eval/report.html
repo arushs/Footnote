@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RAG Eval: eval/dataset</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; max-width: 1000px; margin: 0 auto; padding: 2rem; background: #f5f5f5; }
+    h1 { margin-bottom: 0.5rem; }
+    .meta { color: #666; margin-bottom: 1.5rem; }
+    .summary { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem; }
+    .stat { background: white; padding: 1rem 1.5rem; border-radius: 8px; text-align: center; }
+    .stat-value { font-size: 1.75rem; font-weight: bold; }
+    .stat-value.good { color: #22c55e; }
+    .stat-value.warn { color: #f59e0b; }
+    .stat-value.bad { color: #ef4444; }
+    .stat-label { color: #666; font-size: 0.875rem; margin-top: 0.25rem; }
+    .results { display: flex; flex-direction: column; gap: 0.75rem; }
+    .result { background: white; border-radius: 8px; overflow: hidden; }
+    .result-header { padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.75rem; cursor: pointer; }
+    .result-header:hover { background: #f9f9f9; }
+    .badge { padding: 0.2rem 0.6rem; border-radius: 999px; font-weight: 600; font-size: 0.7rem; }
+    .badge.pass { background: #dcfce7; color: #166534; }
+    .badge.fail { background: #fee2e2; color: #991b1b; }
+    .query { flex: 1; }
+    .latency { color: #666; font-size: 0.875rem; }
+    .details { display: none; padding: 1rem; border-top: 1px solid #eee; background: #fafafa; font-size: 0.875rem; }
+    .result.open .details { display: block; }
+    .metrics { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+    .metric { background: #e5e7eb; padding: 0.25rem 0.5rem; border-radius: 4px; }
+    .metric.fail { background: #fee2e2; color: #991b1b; }
+    .failures { background: #fee2e2; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.75rem; }
+    .failures li { margin-left: 1rem; color: #991b1b; }
+    .section { margin-bottom: 0.75rem; }
+    .section-title { font-weight: 600; margin-bottom: 0.25rem; }
+    .list { margin: 0; padding-left: 1.25rem; }
+    .answer { background: #f3f4f6; padding: 0.75rem; border-radius: 4px; white-space: pre-wrap; max-height: 150px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>RAG Evaluation Report</h1>
+  <div class="meta">
+    <strong>eval/dataset</strong> &middot;
+    Agent RAG &middot;
+    2 items &middot;
+    2026-01-18 15:28
+  </div>
+
+  <div class="summary">
+    <div class="stat">
+      <div class="stat-value bad">50%</div>
+      <div class="stat-label">Pass Rate</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">100%</div>
+      <div class="stat-label">Doc Recall</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">50%</div>
+      <div class="stat-label">Citation Hit</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">100%</div>
+      <div class="stat-label">Tool Correct</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">11204ms</div>
+      <div class="stat-label">Avg Latency</div>
+    </div>
+  </div>
+
+  <h2>Results</h2>
+  <div class="results">
+    <div class="result">
+      <div class="result-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="badge fail">FAIL</span>
+        <span class="query">Which quarter did apple have strongest performance?</span>
+        <span class="latency">13458ms</span>
+      </div>
+      <div class="details">
+        <div class="metrics">
+          <span class="metric ">DocRecall: 1</span>
+          <span class="metric fail">CitationHit: 0</span>
+          <span class="metric ">ToolCorrect: 1</span>
+        </div>
+        <div class="failures">
+          <ul class="list"><li>Citation hit: no citation matches gold doc</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Retrieved (8)</div>
+          <ul class="list"><li>10-Q Q3.pdf</li><li>10-Q Q2.pdf</li><li>Consolidated Financial Statements.pdf</li><li>FY25_Q4_Consolidated_Financial_Statements.pdf</li><li>01-30-25 Apple Reports First Quarter Results.pdf</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Citations (2)</div>
+          <ul class="list"><li>10-Q Q2.pdf</li><li>10-Q Q3.pdf</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Tools (2)</div>
+          <ul class="list"><li>search_folder</li><li>search_folder</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Answer</div>
+          <div class="answer">Based on the quarterly financial data, **Q1 (December quarter) had the strongest performance** with total net sales of **$124.3 billion**.
+
+## Quarterly Revenue Comparison (FY 2025)
+
+| Quarter | Period Ended | Total Net Sales | Operating Income |
+|---------|--------------|-----------------|------------------|
+| **Q1** | Dec 28, 2024 | **$124.3B** | **$42.8B** |
+| Q4 | Sep 27, 2025 | $102.5B | $28.2B |
+| Q2 | Mar 29, 2025 | $95.4B | $29.6B |
+| Q3 | Jun 28, 2025 | $94.0B | $28.2B |
+
+Q1 consistentl...</div>
+        </div>
+      </div>
+    </div>
+    <div class="result">
+      <div class="result-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="badge pass">PASS</span>
+        <span class="query">Can you pull up the onboarding checklist?</span>
+        <span class="latency">8950ms</span>
+      </div>
+      <div class="details">
+        <div class="metrics">
+          <span class="metric ">DocRecall: 1</span>
+          <span class="metric ">CitationHit: 1</span>
+          <span class="metric ">ToolCorrect: 1</span>
+        </div>
+        <div class="section">
+          <div class="section-title">Retrieved (4)</div>
+          <ul class="list"><li>10-Q Q3.pdf</li><li>10-Q Q2.pdf</li><li>10-Q Q1.pdf</li><li>_10-K 2025 (As-Filed).pdf</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Citations (0)</div>
+          <ul class="list"></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Tools (2)</div>
+          <ul class="list"><li>search_folder</li><li>search_folder</li></ul>
+        </div>
+        <div class="section">
+          <div class="section-title">Answer</div>
+          <div class="answer">I don't see an onboarding checklist in the indexed files. The folder appears to contain Apple Inc. financial documents (10-K and 10-Q reports) and employee stock plan documents, but no onboarding checklist.
+
+Could you clarify what type of onboarding checklist you're looking for, or is it possible it might be named something different?</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
