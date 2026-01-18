@@ -1,8 +1,8 @@
 """Unified extraction service for multiple document types."""
 
-from app.services.extraction.google_docs import GoogleDocsExtractor
-from app.services.extraction.models import ExtractedDocument
-from app.services.extraction.pdf import PDFExtractor
+from app.services.file.extraction.google_docs import GoogleDocsExtractor
+from app.services.file.extraction.models import ExtractedDocument
+from app.services.file.extraction.pdf import PDFExtractor
 
 
 class ExtractionService:

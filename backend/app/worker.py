@@ -13,10 +13,10 @@ from app.config import settings
 from app.database import async_session
 from app.models import File, IndexingJob, Session
 from app.services.anthropic import get_client as get_anthropic_client
-from app.services.chunking import DocumentChunk, chunk_document, generate_file_preview
 from app.services.drive import DriveService
-from app.services.embedding import embed_document, embed_documents_batch
-from app.services.extraction import ExtractionService
+from app.services.file.chunking import DocumentChunk, chunk_document, generate_file_preview
+from app.services.file.embedding import embed_document, embed_documents_batch
+from app.services.file.extraction import ExtractionService
 
 
 def format_vector(embedding: list[float]) -> str:

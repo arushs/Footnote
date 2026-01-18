@@ -18,7 +18,7 @@ from app.config import settings
 from app.models import Chunk, Conversation, File, Message, Session
 from app.services.anthropic import get_client
 from app.services.drive import DriveService
-from app.services.extraction import ExtractionService
+from app.services.file.extraction import ExtractionService
 from app.services.hybrid_search import hybrid_search
 from app.services.tools import ALL_TOOLS
 
@@ -60,10 +60,11 @@ def build_agent_system_prompt(
 - You can cite the same source multiple times
 
 ## Search Quality Guidance
-- RRF score > 0.5: Results are likely relevant, consider synthesizing
-- RRF score 0.3-0.5: May need refinement or alternative search terms
+- Weighted score > 0.6: Results are likely relevant, consider synthesizing
+- Weighted score 0.4-0.6: May need refinement or alternative search terms
 - Multiple low-scoring results: Try a broader or more specific query
 - Empty results: Try different terminology or ask clarifying questions
+- Note: Scores combine semantic similarity (60%), keyword match (20%), and recency (20%)
 
 ## Guidelines
 - Be thorough but efficient - don't over-search if you have good results
@@ -269,7 +270,7 @@ async def execute_tool(
             )
 
         if formatted_results:
-            logger.info(f"[AGENT] Top result score: {results[0].rrf_score:.4f}")
+            logger.info(f"[AGENT] Top result score: {results[0].weighted_score:.4f}")
         else:
             logger.warning("[AGENT] No search results found")
 

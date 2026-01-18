@@ -2,7 +2,7 @@
 
 from bs4 import BeautifulSoup, Tag
 
-from app.services.extraction.models import ExtractedDocument, TextBlock
+from app.services.file.extraction.models import ExtractedDocument, TextBlock
 
 
 class GoogleDocsExtractor:
