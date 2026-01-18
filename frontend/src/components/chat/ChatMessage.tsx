@@ -1,5 +1,11 @@
-import { useState, ReactNode, Children, isValidElement, cloneElement } from 'react'
-import { Copy, Check, User, Bot, ChevronRight } from 'lucide-react'
+import {
+  useState,
+  ReactNode,
+  Children,
+  isValidElement,
+  cloneElement,
+} from 'react'
+import { Copy, Check, ChevronRight } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import ReactMarkdown from 'react-markdown'
 import type { Message, Citation } from '../../types'
@@ -22,7 +28,9 @@ export function ChatMessage({
   const isUser = message.role === 'user'
   const hasCitations =
     message.citations && Object.keys(message.citations).length > 0
-  const citationCount = hasCitations ? Object.keys(message.citations!).length : 0
+  const citationCount = hasCitations
+    ? Object.keys(message.citations!).length
+    : 0
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content)
@@ -112,51 +120,56 @@ export function ChatMessage({
     )
   }
 
-  return (
-    <article
-      className={cn(
-        'group flex gap-3 px-4 py-4',
-        isUser ? 'bg-muted/50' : 'bg-background'
-      )}
-      aria-label={isUser ? 'Your message' : 'Assistant response'}
-    >
-      <div
-        className={cn(
-          'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-secondary'
-        )}
-        aria-hidden="true"
-      >
-        {isUser ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
-      </div>
+  // User messages: right-aligned bubble
+  if (isUser) {
+    return (
+      <article className="flex justify-end px-4 py-3" aria-label="Your message">
+        <div className="max-w-[80%] rounded-3xl bg-muted px-4 py-2.5">
+          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+        </div>
+      </article>
+    )
+  }
 
-      <div className="flex-1 space-y-2 overflow-hidden">
+  // Assistant messages: left-aligned plain text with copy button below
+  return (
+    <article className="group px-4 py-3" aria-label="Assistant response">
+      <div className="space-y-2">
         <div className="prose prose-sm max-w-none dark:prose-invert">
           {renderContent()}
         </div>
-        {!isUser && hasCitations && onToggleSources && (
-          <SourcesPill
-            count={citationCount}
-            isOpen={isSourcesOpen ?? false}
-            onClick={onToggleSources}
-          />
-        )}
-      </div>
 
-      {!isUser && (
-        <button
-          onClick={handleCopy}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
-          aria-label={copied ? 'Copied to clipboard' : 'Copy message'}
-          title="Copy message"
-        >
-          {copied ? (
-            <Check className="h-4 w-4 text-green-500" aria-hidden="true" />
-          ) : (
-            <Copy className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <div className="flex items-center gap-2 pt-1">
+          {hasCitations && onToggleSources && (
+            <SourcesPill
+              count={citationCount}
+              isOpen={isSourcesOpen ?? false}
+              onClick={onToggleSources}
+            />
           )}
-        </button>
-      )}
+          <button
+            onClick={handleCopy}
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity h-7 px-2 flex items-center gap-1.5 rounded-md hover:bg-muted text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label={copied ? 'Copied to clipboard' : 'Copy response'}
+            title="Copy response"
+          >
+            {copied ? (
+              <>
+                <Check
+                  className="h-3.5 w-3.5 text-green-500"
+                  aria-hidden="true"
+                />
+                <span className="text-green-500">Copied</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>Copy</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </article>
   )
 }
@@ -191,8 +204,12 @@ function CitationMarker({ citation, onClick }: CitationMarkerProps) {
           >
             <div className="space-y-1">
               <p className="font-medium text-sm">{citation.file_name}</p>
-              <p className="text-xs text-muted-foreground">{citation.location}</p>
-              <p className="text-xs italic line-clamp-3">"{citation.excerpt}"</p>
+              <p className="text-xs text-muted-foreground">
+                {citation.location}
+              </p>
+              <p className="text-xs italic line-clamp-3">
+                "{citation.excerpt}"
+              </p>
             </div>
             <Tooltip.Arrow className="fill-popover" />
           </Tooltip.Content>
