@@ -20,6 +20,7 @@ from app.services.anthropic import get_client
 from app.services.drive import DriveService
 from app.services.file.extraction import ExtractionService
 from app.services.hybrid_search import hybrid_search
+from app.services.posthog import LLMTimer, track_llm_generation
 from app.services.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
@@ -535,12 +536,27 @@ async def agentic_rag(
 
         # Non-streaming call for tool use
         logger.info(f"[AGENT] Calling Claude API (iteration {iteration})")
-        response = await client.messages.create(
+        with LLMTimer() as timer:
+            response = await client.messages.create(
+                model=settings.claude_model,
+                max_tokens=4096,
+                system=system_prompt,
+                tools=ALL_TOOLS,
+                messages=messages,
+            )
+
+        # Track LLM generation in PostHog
+        track_llm_generation(
+            distinct_id=str(user_id),
             model=settings.claude_model,
-            max_tokens=4096,
-            system=system_prompt,
-            tools=ALL_TOOLS,
-            messages=messages,
+            input_tokens=response.usage.input_tokens,
+            output_tokens=response.usage.output_tokens,
+            latency_ms=timer.elapsed_ms,
+            properties={
+                "mode": "agentic_rag",
+                "iteration": iteration,
+                "conversation_id": str(conversation.id),
+            },
         )
         logger.info(f"[AGENT] Claude response stop_reason: {response.stop_reason}")
 
@@ -630,13 +646,28 @@ Remember to cite sources using [1], [2], etc. format. Synthesize the information
         )
 
         try:
-            synthesis_response = await client.messages.create(
+            with LLMTimer() as timer:
+                synthesis_response = await client.messages.create(
+                    model=settings.claude_model,
+                    max_tokens=4096,
+                    system=system_prompt,
+                    messages=synthesis_messages,
+                    # No tools - forces text response
+                )
+
+            # Track synthesis LLM generation in PostHog
+            track_llm_generation(
+                distinct_id=str(user_id),
                 model=settings.claude_model,
-                max_tokens=4096,
-                system=system_prompt,
-                messages=synthesis_messages,
-                # No tools - forces text response
+                input_tokens=synthesis_response.usage.input_tokens,
+                output_tokens=synthesis_response.usage.output_tokens,
+                latency_ms=timer.elapsed_ms,
+                properties={
+                    "mode": "agentic_rag_synthesis",
+                    "conversation_id": str(conversation.id),
+                },
             )
+
             full_response = ""
             for block in synthesis_response.content:
                 if hasattr(block, "text"):

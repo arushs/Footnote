@@ -18,6 +18,7 @@ from app.config import settings
 from app.models import Conversation, Message
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_retrieve_and_rerank
+from app.services.posthog import LLMTimer, track_llm_generation
 
 logger = logging.getLogger(__name__)
 
@@ -157,17 +158,35 @@ async def standard_rag(
     # 5. Stream response from Claude
     client = get_client()
     full_response = ""
+    input_tokens = 0
+    output_tokens = 0
 
     try:
-        async with client.messages.stream(
+        with LLMTimer() as timer:
+            async with client.messages.stream(
+                model=settings.claude_model,
+                max_tokens=4096,
+                system=system_prompt,
+                messages=messages,
+            ) as stream:
+                async for text in stream.text_stream:
+                    full_response += text
+                    yield f"data: {json.dumps({'token': text})}\n\n"
+
+                # Get final message for token usage
+                final_message = await stream.get_final_message()
+                input_tokens = final_message.usage.input_tokens
+                output_tokens = final_message.usage.output_tokens
+
+        # Track LLM generation in PostHog
+        track_llm_generation(
+            distinct_id=str(user_id),
             model=settings.claude_model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
-                full_response += text
-                yield f"data: {json.dumps({'token': text})}\n\n"
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=timer.elapsed_ms,
+            properties={"mode": "standard_rag", "conversation_id": str(conversation.id)},
+        )
     except Exception as e:
         logger.error(f"Error streaming response: {e}")
         yield f"data: {json.dumps({'error': str(e)})}\n\n"

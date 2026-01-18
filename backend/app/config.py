@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     # Indexing
     contextual_chunking_enabled: bool = False  # Add context to chunks via LLM (increases API usage)
 
+    # PostHog LLM Analytics
+    posthog_api_key: str = ""
+    posthog_host: str = "https://us.i.posthog.com"
+    posthog_enabled: bool = True
+
     # Security
     secret_key: str = "dev-secret-key-change-in-production"
     session_expire_hours: int = 24
