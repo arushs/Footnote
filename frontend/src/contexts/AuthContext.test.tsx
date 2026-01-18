@@ -150,7 +150,10 @@ describe('AuthContext', () => {
           ok: true,
           json: async () => mockUser,
         })
-        .mockRejectedValueOnce(new Error('Network error'))
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+        })
 
       render(
         <AuthProvider>
@@ -166,7 +169,9 @@ describe('AuthContext', () => {
         screen.getByText('Logout').click()
       })
 
-      expect(screen.getByTestId('user')).toHaveTextContent('null')
+      await waitFor(() => {
+        expect(screen.getByTestId('user')).toHaveTextContent('null')
+      })
     })
   })
 })

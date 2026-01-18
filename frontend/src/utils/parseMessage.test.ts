@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMessageContent, extractCitationNumbers } from '../parseMessage'
+import { parseMessageContent, extractCitationNumbers } from './parseMessage'
 import type { Citation } from '../../types'
 
 describe('parseMessageContent', () => {
