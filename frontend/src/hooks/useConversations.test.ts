@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
-import { useConversations } from '../useConversations'
+import { useConversations } from './useConversations'
 import type { Conversation } from '../../types'
 
 // Mock fetch
