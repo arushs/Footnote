@@ -175,6 +175,7 @@ class TestStandardRAGFlow:
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         conversation = MagicMock()
         conversation.id = uuid.uuid4()
 
@@ -213,7 +214,9 @@ class TestStandardRAGFlow:
 
                 # Collect all yielded chunks
                 chunks = []
-                async for chunk in standard_rag(mock_db, folder_id, conversation, "test question"):
+                async for chunk in standard_rag(
+                    mock_db, folder_id, user_id, conversation, "test question"
+                ):
                     chunks.append(chunk)
 
                 # Should have token chunks and done message
@@ -228,6 +231,7 @@ class TestStandardRAGFlow:
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         conversation = MagicMock()
         conversation.id = uuid.uuid4()
 
@@ -261,7 +265,9 @@ class TestStandardRAGFlow:
                 mock_client.messages.stream.return_value = MockStream()
                 mock_get_client.return_value = mock_client
 
-                async for _ in standard_rag(mock_db, folder_id, conversation, "test question"):
+                async for _ in standard_rag(
+                    mock_db, folder_id, user_id, conversation, "test question"
+                ):
                     pass
 
                 # Should have called db.add twice (user + assistant)

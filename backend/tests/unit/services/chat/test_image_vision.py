@@ -296,6 +296,7 @@ async def test_execute_tool_get_file_image():
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         folder_id = mock_file.folder_id
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         from app.services.chat.agent import execute_tool
@@ -304,6 +305,7 @@ async def test_execute_tool_get_file_image():
             "get_file",
             {"file_id": str(mock_file.id)},
             folder_id,
+            user_id,
             mock_db,
             indexed_chunks,
         )

@@ -134,6 +134,7 @@ class TestExecuteTool:
         """Search folder tool should return formatted text response."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         # Only mock hybrid_search - it handles embed_query internally
@@ -144,6 +145,7 @@ class TestExecuteTool:
                 "search_folder",
                 {"query": "test query"},
                 folder_id,
+                user_id,
                 mock_db,
                 indexed_chunks,
             )
@@ -160,6 +162,7 @@ class TestExecuteTool:
         """
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         with patch("app.services.chat.agent.hybrid_search") as mock_search:
@@ -176,6 +179,7 @@ class TestExecuteTool:
                 "search_folder",
                 {"query": "test query"},
                 folder_id,
+                user_id,
                 mock_db,
                 indexed_chunks,
             )
@@ -191,6 +195,7 @@ class TestExecuteTool:
         """Should return error JSON when hybrid_search fails."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         with patch("app.services.chat.agent.hybrid_search") as mock_search:
@@ -200,6 +205,7 @@ class TestExecuteTool:
                 "search_folder",
                 {"query": "test query"},
                 folder_id,
+                user_id,
                 mock_db,
                 indexed_chunks,
             )
@@ -214,12 +220,14 @@ class TestExecuteTool:
         """Search folder should return error for empty query."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         result = await execute_tool(
             "search_folder",
             {"query": ""},
             folder_id,
+            user_id,
             mock_db,
             indexed_chunks,
         )
@@ -232,12 +240,14 @@ class TestExecuteTool:
         """Get file should return error for invalid UUID."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         result = await execute_tool(
             "get_file",
             {"file_id": "not-a-uuid"},
             folder_id,
+            user_id,
             mock_db,
             indexed_chunks,
         )
@@ -255,12 +265,14 @@ class TestExecuteTool:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         result = await execute_tool(
             "get_file",
             {"file_id": str(uuid.uuid4())},
             folder_id,
+            user_id,
             mock_db,
             indexed_chunks,
         )
@@ -285,6 +297,7 @@ class TestExecuteTool:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         # Mock get_user_session_for_folder, DriveService, and ExtractionService
@@ -317,6 +330,7 @@ class TestExecuteTool:
                 "get_file",
                 {"file_id": str(uuid.uuid4())},
                 folder_id,
+                user_id,
                 mock_db,
                 indexed_chunks,
             )
@@ -335,12 +349,14 @@ class TestExecuteTool:
         """Unknown tool should return error."""
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         indexed_chunks = []
 
         result = await execute_tool(
             "unknown_tool",
             {},
             folder_id,
+            user_id,
             mock_db,
             indexed_chunks,
         )
@@ -436,6 +452,7 @@ class TestAgenticRAGFlow:
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         conversation = MagicMock()
         conversation.id = uuid.uuid4()
 
@@ -457,7 +474,9 @@ class TestAgenticRAGFlow:
             mock_get_client.return_value = mock_client
 
             chunks = []
-            async for chunk in agentic_rag(mock_db, folder_id, conversation, "test question"):
+            async for chunk in agentic_rag(
+                mock_db, folder_id, user_id, conversation, "test question"
+            ):
                 chunks.append(chunk)
 
             # Should have status and token chunks
@@ -471,6 +490,7 @@ class TestAgenticRAGFlow:
 
         mock_db = AsyncMock()
         folder_id = uuid.uuid4()
+        user_id = uuid.uuid4()
         conversation = MagicMock()
         conversation.id = uuid.uuid4()
 
@@ -512,7 +532,9 @@ class TestAgenticRAGFlow:
             mock_get_client.return_value = mock_client
 
             chunks = []
-            async for chunk in agentic_rag(mock_db, folder_id, conversation, "test question"):
+            async for chunk in agentic_rag(
+                mock_db, folder_id, user_id, conversation, "test question"
+            ):
                 chunks.append(chunk)
 
             # Should have multiple iterations

@@ -95,6 +95,7 @@ def extract_citation_numbers(text: str) -> set[int]:
 async def standard_rag(
     db: AsyncSession,
     folder_id: uuid.UUID,
+    user_id: uuid.UUID,
     conversation: Conversation,
     user_message: str,
 ) -> AsyncGenerator[str, None]:
@@ -117,6 +118,7 @@ async def standard_rag(
         db=db,
         query=user_message,
         folder_id=folder_id,
+        user_id=user_id,
         initial_top_k=30,
         final_top_k=15,
     )
