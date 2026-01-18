@@ -72,7 +72,9 @@ def build_or_query(query: str) -> str:
     return " OR ".join(words)
 
 
-def calculate_recency_score(updated_at: datetime | None, half_life_days: float = RECENCY_HALF_LIFE_DAYS) -> float:
+def calculate_recency_score(
+    updated_at: datetime | None, half_life_days: float = RECENCY_HALF_LIFE_DAYS
+) -> float:
     """Calculate recency score using exponential decay.
 
     Score of 1.0 for now, 0.5 after half_life_days, 0.25 after 2*half_life_days, etc.
@@ -126,9 +128,9 @@ def calculate_weighted_score(
         Combined weighted score
     """
     return (
-        vector_weight * vector_score +
-        keyword_weight * keyword_score +
-        recency_weight * recency_score
+        vector_weight * vector_score
+        + keyword_weight * keyword_score
+        + recency_weight * recency_score
     )
 
 
@@ -278,7 +280,9 @@ async def hybrid_search(
     logger.info(f"[HYBRID] Keyword search returned {len(keyword_results)} results")
 
     # Build lookup maps
-    keyword_scores: dict[uuid.UUID, float] = {chunk_id: score for chunk_id, score in keyword_results}
+    keyword_scores: dict[uuid.UUID, float] = {
+        chunk_id: score for chunk_id, score in keyword_results
+    }
 
     # Build combined results from vector search
     chunk_data: dict[uuid.UUID, dict] = {}

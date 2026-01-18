@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import init_db
-from app.routes import auth, chat, folders
+from app.routes import auth, chat, folders, health
 from app.services.anthropic import close_client as close_anthropic_client
 
 # Configure logging
@@ -43,8 +43,4 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(folders.router, prefix="/api/folders", tags=["folders"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
-
-
-@app.get("/api/health")
-async def health():
-    return {"status": "healthy"}
+app.include_router(health.router, prefix="/api/health", tags=["health"])
