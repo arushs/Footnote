@@ -110,20 +110,15 @@ async def standard_rag(
         )
 
     # Track retrieval span
-    retrieval_scores = [
-        {
-            "file": c.file_name,
-            "score": round(c.similarity_score, 3),
-            "rerank": round(c.rerank_score, 3) if c.rerank_score else None,
-        }
-        for c in chunks[:5]  # Top 5 for brevity
-    ]
     track_span(
         distinct_id=str(user_id),
         trace_id=trace_id,
-        span_name="hybrid_search_and_rerank",
-        input_state={"query": user_message, "initial_top_k": 30, "final_top_k": 15},
-        output_state={"candidates": len(chunks), "top_scores": retrieval_scores},
+        span_name="retrieval",
+        input_state={"query": user_message},
+        output_state={
+            "chunks_retrieved": len(chunks),
+            "files_found": len({c.file_name for c in chunks}),
+        },
         latency_ms=retrieval_timer.elapsed_ms,
     )
 

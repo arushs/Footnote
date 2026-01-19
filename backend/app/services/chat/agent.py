@@ -7,6 +7,7 @@ Uses Claude tool use for iterative search and query refinement.
 import json
 import logging
 import re
+import time
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -232,6 +233,9 @@ async def agentic_rag(
     # Generate a trace ID to group all iterations in PostHog
     trace_id = str(uuid.uuid4())
 
+    # Start timer for full agent loop
+    agent_loop_start = time.perf_counter()
+
     # Build dynamic system prompt with folder context
     system_prompt = build_agent_system_prompt(
         folder_name=folder_name,
@@ -422,6 +426,22 @@ Remember to cite sources using [1], [2], etc. format. Synthesize the information
     )
     db.add(assistant_msg)
     await db.commit()  # Explicit commit for streaming response
+
+    # Track the full agent loop as a span
+    agent_loop_latency_ms = (time.perf_counter() - agent_loop_start) * 1000
+    track_span(
+        distinct_id=str(user_id),
+        trace_id=trace_id,
+        span_name="agent_loop",
+        input_state={"query": user_message},
+        output_state={
+            "iterations": iteration,
+            "chunks_indexed": len(indexed_chunks),
+            "citations_used": len(citations),
+            "response_length": len(full_response),
+        },
+        latency_ms=agent_loop_latency_ms,
+    )
 
     # Send final message with metadata
     yield f"data: {json.dumps({'done': True, 'citations': citations, 'searched_files': searched_file_names, 'conversation_id': str(conversation.id), 'iterations': iteration})}\n\n"
