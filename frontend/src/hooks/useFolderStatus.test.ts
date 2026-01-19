@@ -96,8 +96,12 @@ describe('useFolderStatus', () => {
         expect(result.current.isLoading).toBe(false)
       })
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1')
-      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1/status')
+      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1', {
+        credentials: 'include',
+      })
+      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1/status', {
+        credentials: 'include',
+      })
       expect(result.current.folder).toEqual(mockFolder)
       expect(result.current.status).toEqual(mockStatusReady)
     })

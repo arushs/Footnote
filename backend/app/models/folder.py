@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.enums import FolderStatus
 
 if TYPE_CHECKING:
     from app.models.conversation import Conversation
@@ -23,7 +24,7 @@ class Folder(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     google_folder_id: Mapped[str] = mapped_column(Text, nullable=False)
     folder_name: Mapped[str] = mapped_column(Text, nullable=True)
-    index_status: Mapped[str] = mapped_column(Text, default="pending")
+    index_status: Mapped[str] = mapped_column(Text, default=FolderStatus.PENDING)
     files_total: Mapped[int] = mapped_column(Integer, default=0)
     files_indexed: Mapped[int] = mapped_column(Integer, default=0)
     last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

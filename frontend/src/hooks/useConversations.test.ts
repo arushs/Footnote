@@ -68,7 +68,9 @@ describe('useConversations', () => {
         expect(result.current.isLoading).toBe(false)
       })
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1/conversations')
+      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-1/conversations', {
+        credentials: 'include',
+      })
       expect(result.current.conversations).toEqual(mockConversations)
       expect(result.current.error).toBeNull()
     })
@@ -82,7 +84,9 @@ describe('useConversations', () => {
       renderHook(() => useConversations({ folderId: 'my-folder-123' }))
 
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith('/api/folders/my-folder-123/conversations')
+        expect(mockFetch).toHaveBeenCalledWith('/api/folders/my-folder-123/conversations', {
+          credentials: 'include',
+        })
       })
     })
   })
@@ -206,7 +210,9 @@ describe('useConversations', () => {
         expect(result.current.conversations[0].id).toBe('conv-2')
       })
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-2/conversations')
+      expect(mockFetch).toHaveBeenCalledWith('/api/folders/folder-2/conversations', {
+        credentials: 'include',
+      })
     })
   })
 })

@@ -73,6 +73,7 @@ CREATE INDEX idx_files_embedding ON files
 CREATE TABLE chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     file_id UUID REFERENCES files(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
     chunk_text TEXT NOT NULL,
     chunk_embedding vector(768),
     search_vector tsvector,  -- Full-text search vector for hybrid search
@@ -87,6 +88,8 @@ CREATE TABLE chunks (
 );
 
 CREATE INDEX idx_chunks_file_id ON chunks(file_id);
+-- Composite index for hybrid search authorization filtering
+CREATE INDEX idx_chunks_user_file ON chunks(user_id, file_id);
 
 -- Vector index for chunk-level retrieval (Stage 2)
 CREATE INDEX idx_chunks_embedding ON chunks

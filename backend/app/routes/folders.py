@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.enums import FolderStatus as FolderStatusEnum
 from app.models import File, Folder
 from app.models import Session as DbSession
 from app.routes.auth import get_current_session
@@ -90,7 +91,7 @@ async def create_folder(
         user_id=session.user_id,
         google_folder_id=folder.google_folder_id,
         folder_name=folder.folder_name,
-        index_status="indexing",
+        index_status=FolderStatusEnum.INDEXING,
     )
     db.add(new_folder)
     try:

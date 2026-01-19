@@ -5,12 +5,32 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from fastapi import HTTPException
 from sqlalchemy import text
 
 from app.models import Session
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def validate_uuid(value: str, name: str = "ID") -> uuid.UUID:
+    """Validate and convert a string to UUID.
+
+    Args:
+        value: String to validate as UUID
+        name: Human-readable name for error messages
+
+    Returns:
+        Validated UUID
+
+    Raises:
+        HTTPException: 400 if the string is not a valid UUID
+    """
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid {name}") from None
 
 
 def format_vector(embedding: list[float]) -> str:
