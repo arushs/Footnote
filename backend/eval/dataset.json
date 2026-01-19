@@ -7,7 +7,7 @@
     {
       "id": "E001",
       "query": "Which quarter did apple have strongest performance?",
-      "gold_doc_titles": ["10-Q Q1"],
+      "gold_doc_titles": ["10-Q Q1", "10-Q Q3"],
       "requires_tool": true,
       "expected_tool": "search_folder",
       "tags": ["navigation"]

@@ -4,7 +4,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
+from sqlalchemy import literal, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery_app
@@ -52,7 +52,7 @@ async def db_health(db: AsyncSession = Depends(get_db)):
     """
     try:
         # Simple query to verify connectivity
-        result = await db.execute(text("SELECT 1"))
+        result = await db.execute(select(literal(1)))
         result.scalar()
 
         # Get current timeout settings

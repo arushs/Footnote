@@ -1,5 +1,7 @@
 # Footnote
 
+[![CI](https://github.com/arushs/Footnote/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arushs/Footnote/actions/workflows/ci.yml)
+
 Chat with your Google Drive folders using RAG (Retrieval-Augmented Generation).
 
 Footnote indexes your Google Drive documents and lets you have conversations with them. It uses hybrid search (vector + keyword + recency) to find relevant context and Claude to generate responses with citations.

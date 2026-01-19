@@ -75,6 +75,12 @@ services:
         value: '["https://app.footnote.one"]'
       - key: COOKIE_DOMAIN
         value: .footnote.one
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: POSTHOG_HOST
+        value: https://us.i.posthog.com
+      - key: POSTHOG_ENABLED
+        value: "true"
 
   # Celery Worker - Background Indexing Jobs
   - type: worker
@@ -103,6 +109,12 @@ services:
         sync: false
       - key: MISTRAL_API_KEY
         sync: false
+      - key: POSTHOG_API_KEY
+        sync: false
+      - key: POSTHOG_HOST
+        value: https://us.i.posthog.com
+      - key: POSTHOG_ENABLED
+        value: "true"
 
 databases:
   - name: footnote-db

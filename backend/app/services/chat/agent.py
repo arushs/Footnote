@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.models import Conversation, Message
 from app.services.anthropic import get_client
-from app.services.posthog import LLMTimer, track_llm_generation
+from app.services.posthog import LLMTimer, track_llm_generation, track_span
 from app.services.tools import ALL_TOOLS, ToolContext, ToolName
 from app.services.tools import get_file as get_file_tool
 from app.services.tools import get_file_chunks as get_file_chunks_tool
@@ -226,6 +226,9 @@ async def agentic_rag(
     iteration = 0
     response = None
 
+    # Generate a trace ID to group all iterations in PostHog
+    trace_id = str(uuid.uuid4())
+
     # Build dynamic system prompt with folder context
     system_prompt = build_agent_system_prompt(
         folder_name=folder_name,
@@ -260,6 +263,7 @@ async def agentic_rag(
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
             latency_ms=timer.elapsed_ms,
+            trace_id=trace_id,
             properties={
                 "mode": "agentic_rag",
                 "iteration": iteration,
@@ -285,11 +289,25 @@ async def agentic_rag(
 
                     yield f"data: {json.dumps({'agent_status': {'phase': tool_status, 'iteration': iteration, 'tool': block.name}})}\n\n"
 
-                    result = await execute_tool(
-                        block.name,
-                        block.input,
-                        tool_ctx,
+                    # Execute tool and track span
+                    with LLMTimer() as tool_timer:
+                        result = await execute_tool(
+                            block.name,
+                            block.input,
+                            tool_ctx,
+                        )
+
+                    # Track tool call span
+                    track_span(
+                        distinct_id=str(user_id),
+                        trace_id=trace_id,
+                        span_name=f"tool_{block.name}",
+                        input_state=block.input,
+                        output_state={"result_length": len(result)},
+                        latency_ms=tool_timer.elapsed_ms,
+                        properties={"iteration": iteration},
                     )
+
                     logger.info(f"[AGENT] Tool {block.name} result length: {len(result)} chars")
                     tool_results.append(
                         {
@@ -369,6 +387,7 @@ Remember to cite sources using [1], [2], etc. format. Synthesize the information
                 input_tokens=synthesis_response.usage.input_tokens,
                 output_tokens=synthesis_response.usage.output_tokens,
                 latency_ms=timer.elapsed_ms,
+                trace_id=trace_id,
                 properties={
                     "mode": "agentic_rag_synthesis",
                     "conversation_id": str(conversation.id),

@@ -18,7 +18,7 @@ from app.config import settings
 from app.models import Conversation, Message
 from app.services.anthropic import get_client
 from app.services.hybrid_search import hybrid_retrieve_and_rerank
-from app.services.posthog import LLMTimer, track_llm_generation
+from app.services.posthog import LLMTimer, track_llm_generation, track_span
 from app.utils import build_google_drive_url, format_location
 
 logger = logging.getLogger(__name__)
@@ -95,14 +95,36 @@ async def standard_rag(
     Yields:
         SSE-formatted chunks for streaming response
     """
+    # Generate trace ID for this RAG request
+    trace_id = str(uuid.uuid4())
+
     # 1. Hybrid search with reranking
-    chunks = await hybrid_retrieve_and_rerank(
-        db=db,
-        query=user_message,
-        folder_id=folder_id,
-        user_id=user_id,
-        initial_top_k=30,
-        final_top_k=15,
+    with LLMTimer() as retrieval_timer:
+        chunks = await hybrid_retrieve_and_rerank(
+            db=db,
+            query=user_message,
+            folder_id=folder_id,
+            user_id=user_id,
+            initial_top_k=30,
+            final_top_k=15,
+        )
+
+    # Track retrieval span
+    retrieval_scores = [
+        {
+            "file": c.file_name,
+            "score": round(c.similarity_score, 3),
+            "rerank": round(c.rerank_score, 3) if c.rerank_score else None,
+        }
+        for c in chunks[:5]  # Top 5 for brevity
+    ]
+    track_span(
+        distinct_id=str(user_id),
+        trace_id=trace_id,
+        span_name="hybrid_search_and_rerank",
+        input_state={"query": user_message, "initial_top_k": 30, "final_top_k": 15},
+        output_state={"candidates": len(chunks), "top_scores": retrieval_scores},
+        latency_ms=retrieval_timer.elapsed_ms,
     )
 
     # Get list of searched files (unique file names)
@@ -159,15 +181,6 @@ async def standard_rag(
                 input_tokens = final_message.usage.input_tokens
                 output_tokens = final_message.usage.output_tokens
 
-        # Track LLM generation in PostHog
-        track_llm_generation(
-            distinct_id=str(user_id),
-            model=settings.claude_model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            latency_ms=timer.elapsed_ms,
-            properties={"mode": "standard_rag", "conversation_id": str(conversation.id)},
-        )
     except Exception as e:
         logger.error(f"Error streaming response: {e}")
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
@@ -192,6 +205,24 @@ async def standard_rag(
                 "excerpt": excerpt,
                 "google_drive_url": build_google_drive_url(chunk.google_file_id),
             }
+
+    # Track LLM generation in PostHog (after citations extracted)
+    track_llm_generation(
+        distinct_id=str(user_id),
+        model=settings.claude_model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        latency_ms=timer.elapsed_ms,
+        trace_id=trace_id,
+        properties={
+            "mode": "standard_rag",
+            "conversation_id": str(conversation.id),
+            "context_chunks": len(top_chunks),
+            "context_chars": len(context),
+            "citations_used": len(citations),
+            "files_searched": len(searched_files),
+        },
+    )
 
     # 7. Store assistant message with citations
     assistant_msg = Message(

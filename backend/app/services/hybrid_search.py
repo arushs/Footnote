@@ -6,11 +6,11 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import Chunk, File
 from app.services.file.embedding import embed_query, rerank
-from app.utils import format_vector
 
 logger = logging.getLogger(__name__)
 
@@ -153,27 +153,20 @@ async def keyword_search(
     or_query = build_or_query(query)
     logger.info(f"[HYBRID] Keyword query: '{or_query[:50]}...'")
 
-    result = await db.execute(
-        text("""
-            SELECT
-                c.id as chunk_id,
-                ts_rank(c.search_vector, websearch_to_tsquery('english', :query)) as score
-            FROM chunks c
-            JOIN files f ON c.file_id = f.id
-            WHERE f.folder_id = :folder_id
-              AND c.user_id = :user_id
-              AND c.search_vector @@ websearch_to_tsquery('english', :query)
-            ORDER BY score DESC
-            LIMIT :top_k
-        """),
-        {
-            "query": or_query,
-            "folder_id": str(folder_id),
-            "user_id": str(user_id),
-            "top_k": top_k,
-        },
+    ts_query = func.websearch_to_tsquery("english", or_query)
+    score = func.ts_rank(Chunk.search_vector, ts_query).label("score")
+
+    stmt = (
+        select(Chunk.id.label("chunk_id"), score)
+        .join(File, Chunk.file_id == File.id)
+        .where(File.folder_id == folder_id)
+        .where(Chunk.user_id == user_id)
+        .where(Chunk.search_vector.op("@@")(ts_query))
+        .order_by(score.desc())
+        .limit(top_k)
     )
 
+    result = await db.execute(stmt)
     rows = result.fetchall()
     if not rows:
         return []
@@ -205,33 +198,30 @@ async def vector_search_with_scores(
     Returns:
         List of (chunk_id, similarity_score, chunk_data) tuples ordered by similarity
     """
-    result = await db.execute(
-        text("""
-            SELECT
-                c.id as chunk_id,
-                c.file_id,
-                c.chunk_text,
-                c.location,
-                f.file_name,
-                f.google_file_id,
-                f.modified_time as file_updated_at,
-                1 - (c.chunk_embedding <=> CAST(:query_embedding AS vector)) as similarity
-            FROM chunks c
-            JOIN files f ON c.file_id = f.id
-            WHERE f.folder_id = :folder_id
-              AND c.user_id = :user_id
-              AND c.chunk_embedding IS NOT NULL
-            ORDER BY c.chunk_embedding <=> CAST(:query_embedding AS vector)
-            LIMIT :top_k
-        """),
-        {
-            "query_embedding": format_vector(query_embedding),
-            "folder_id": str(folder_id),
-            "user_id": str(user_id),
-            "top_k": top_k,
-        },
+    # cosine_distance returns distance (0 = identical), so similarity = 1 - distance
+    distance = Chunk.chunk_embedding.cosine_distance(query_embedding)
+    similarity = (1 - distance).label("similarity")
+
+    stmt = (
+        select(
+            Chunk.id.label("chunk_id"),
+            Chunk.file_id,
+            Chunk.chunk_text,
+            Chunk.location,
+            File.file_name,
+            File.google_file_id,
+            File.modified_time.label("file_updated_at"),
+            similarity,
+        )
+        .join(File, Chunk.file_id == File.id)
+        .where(File.folder_id == folder_id)
+        .where(Chunk.user_id == user_id)
+        .where(Chunk.chunk_embedding.isnot(None))
+        .order_by(distance)
+        .limit(top_k)
     )
 
+    result = await db.execute(stmt)
     return [
         (
             row.chunk_id,
@@ -298,23 +288,21 @@ async def hybrid_search(
     # For keyword-only results, fetch their data (with user_id filter for defense-in-depth)
     keyword_only_ids = set(keyword_scores.keys()) - set(vector_scores.keys())
     if keyword_only_ids:
-        result = await db.execute(
-            text("""
-                SELECT
-                    c.id as chunk_id,
-                    c.file_id,
-                    c.chunk_text,
-                    c.location,
-                    f.file_name,
-                    f.google_file_id,
-                    f.modified_time as file_updated_at
-                FROM chunks c
-                JOIN files f ON c.file_id = f.id
-                WHERE c.id = ANY(:chunk_ids)
-                  AND c.user_id = :user_id
-            """),
-            {"chunk_ids": list(keyword_only_ids), "user_id": str(user_id)},
+        stmt = (
+            select(
+                Chunk.id.label("chunk_id"),
+                Chunk.file_id,
+                Chunk.chunk_text,
+                Chunk.location,
+                File.file_name,
+                File.google_file_id,
+                File.modified_time.label("file_updated_at"),
+            )
+            .join(File, Chunk.file_id == File.id)
+            .where(Chunk.id.in_(keyword_only_ids))
+            .where(Chunk.user_id == user_id)
         )
+        result = await db.execute(stmt)
         for row in result.fetchall():
             chunk_data[row.chunk_id] = {
                 "file_id": row.file_id,

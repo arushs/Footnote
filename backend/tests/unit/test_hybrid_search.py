@@ -16,12 +16,12 @@ from app.services.hybrid_search import (
     build_or_query,
     calculate_recency_score,
     calculate_weighted_score,
-    format_vector,
     hybrid_retrieve_and_rerank,
     hybrid_search,
     keyword_search,
     vector_search_with_scores,
 )
+from app.utils import format_vector
 
 
 class TestFormatVector:

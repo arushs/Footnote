@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import select
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -70,27 +71,15 @@ def format_location(location: dict, mime_type: str | None = None) -> str:
 async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) -> Session | None:
     """Get a valid user session for accessing files in a folder."""
     # Import here to avoid circular import (models imports utils)
-    from app.models import Session
+    from app.models import Folder, Session
 
-    result = await db.execute(
-        text("""
-            SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
-            FROM sessions s
-            JOIN folders f ON f.user_id = s.user_id
-            WHERE f.id = :folder_id
-              AND s.expires_at > NOW()
-            ORDER BY s.expires_at DESC
-            LIMIT 1
-        """),
-        {"folder_id": str(folder_id)},
+    stmt = (
+        select(Session)
+        .join(Folder, Folder.user_id == Session.user_id)
+        .where(Folder.id == folder_id)
+        .where(Session.expires_at > datetime.now(UTC))
+        .order_by(Session.expires_at.desc())
+        .limit(1)
     )
-    row = result.first()
-    if row:
-        return Session(
-            id=row.id,
-            user_id=row.user_id,
-            access_token=row.access_token,
-            refresh_token=row.refresh_token,
-            expires_at=row.expires_at,
-        )
-    return None
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
