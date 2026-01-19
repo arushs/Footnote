@@ -457,7 +457,9 @@ def process_indexing_job(self, file_id: str, folder_id: str, user_id: str):
             if folder_uuid:
                 asyncio.run(_update_folder_progress(folder_uuid))
         except (ValueError, TypeError):
-            logger.warning(f"Cannot update status - invalid UUIDs: file={file_id}, folder={folder_id}")
+            logger.warning(
+                f"Cannot update status - invalid UUIDs: file={file_id}, folder={folder_id}"
+            )
         raise
     except TransientIndexingError:
         # Will be retried by Celery

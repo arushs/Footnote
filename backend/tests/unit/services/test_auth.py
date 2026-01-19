@@ -142,4 +142,3 @@ class TestRefreshAccessToken:
 
         assert result is not None
         assert mock_session.refresh_token == "new-refresh-token"
-

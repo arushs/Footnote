@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# Run tests with automatic test database setup.
+#
+# Usage:
+#     bin/test                    # Run all tests
+#     bin/test tests/unit/        # Run only unit tests
+#     bin/test -v --tb=short      # Pass args to pytest
+#     bin/test --setup-only       # Just setup the database, don't run tests
+
+set -e
+
+# Database configuration
+DB_HOST="${TEST_DB_HOST:-localhost}"
+DB_PORT="${TEST_DB_PORT:-5432}"
+DB_USER="${TEST_DB_USER:-postgres}"
+DB_PASS="${TEST_DB_PASS:-postgres}"
+DB_NAME="${TEST_DB_NAME:-footnote_test}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${GREEN}==>${NC} $1"
+}
+
+log_warn() {
+    echo -e "${YELLOW}==>${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}==>${NC} $1"
+}
+
+# Check if postgres is available
+check_postgres() {
+    if ! command -v psql &> /dev/null; then
+        log_error "psql not found. Please install PostgreSQL client."
+        exit 1
+    fi
+}
+
+# Create test database if it doesn't exist
+setup_database() {
+    log_info "Setting up test database '$DB_NAME'..."
+
+    export PGPASSWORD="$DB_PASS"
+    export DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+    # Check if database exists
+    if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        log_info "Database '$DB_NAME' already exists"
+    else
+        log_info "Creating database '$DB_NAME'..."
+        createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
+        log_info "Database created"
+
+        # Enable pgvector extension
+        log_info "Enabling pgvector extension..."
+        psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "CREATE EXTENSION IF NOT EXISTS vector"
+    fi
+
+    # Create schema from SQLAlchemy models (idempotent)
+    log_info "Creating/updating schema from models..."
+    uv run python -c "
+import asyncio
+from sqlalchemy import text
+from app.db import engine, Base
+# Import all models to register them with Base.metadata
+from app.models import Chunk, Conversation, FailedTask, File, Folder, IndexingJob, Message, Session, User
+
+async def create_schema():
+    async with engine.begin() as conn:
+        await conn.execute(text('CREATE EXTENSION IF NOT EXISTS vector'))
+        await conn.run_sync(Base.metadata.create_all)
+    await engine.dispose()
+
+asyncio.run(create_schema())
+print('Schema created/updated')
+"
+
+    # Run migrations on test database
+    log_info "Running migrations..."
+    uv run python bin/migrate || true  # Don't fail if migrations already applied
+}
+
+# Drop and recreate test database (for clean slate)
+reset_database() {
+    log_warn "Resetting test database '$DB_NAME'..."
+
+    export PGPASSWORD="$DB_PASS"
+
+    # Drop if exists
+    if psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$DB_NAME"; then
+        log_info "Dropping existing database..."
+        dropdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
+    fi
+
+    setup_database
+}
+
+# Run tests
+run_tests() {
+    log_info "Running tests..."
+
+    # Export test database URL for pytest
+    export DATABASE_URL="postgresql+asyncpg://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+
+    # Run pytest with any additional arguments
+    uv run pytest "$@"
+}
+
+# Main
+main() {
+    check_postgres
+
+    local do_reset=false
+    local setup_only=false
+
+    # Parse flags
+    while [[ "${1:-}" == --* ]]; do
+        case "$1" in
+            --setup-only)
+                setup_only=true
+                shift
+                ;;
+            --reset)
+                do_reset=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: bin/test [OPTIONS] [PYTEST_ARGS...]"
+                echo ""
+                echo "Options:"
+                echo "  --setup-only    Just setup the database, don't run tests"
+                echo "  --reset         Drop and recreate the test database before running"
+                echo "  --help, -h      Show this help message"
+                echo ""
+                echo "Environment variables:"
+                echo "  TEST_DB_HOST    Database host (default: localhost)"
+                echo "  TEST_DB_PORT    Database port (default: 5432)"
+                echo "  TEST_DB_USER    Database user (default: postgres)"
+                echo "  TEST_DB_PASS    Database password (default: postgres)"
+                echo "  TEST_DB_NAME    Database name (default: footnote_test)"
+                echo ""
+                echo "Examples:"
+                echo "  bin/test                         # Run all tests"
+                echo "  bin/test tests/unit/             # Run only unit tests"
+                echo "  bin/test tests/integration/ -v   # Run integration tests verbosely"
+                echo "  bin/test --reset                 # Reset DB and run all tests"
+                exit 0
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Handle reset
+    if $do_reset; then
+        reset_database
+    else
+        setup_database
+    fi
+
+    # Run tests unless --setup-only was specified
+    if ! $setup_only; then
+        run_tests "$@"
+    else
+        log_info "Database setup complete"
+    fi
+}
+
+main "$@"

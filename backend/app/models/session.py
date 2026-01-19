@@ -59,4 +59,3 @@ class Session(Base):
     def refresh_token(self, value: str) -> None:
         """Set and encrypt refresh token."""
         self._refresh_token = encrypt_token(value) if value else ""
-
