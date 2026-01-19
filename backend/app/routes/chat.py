@@ -1,10 +1,7 @@
 """Chat endpoint with RAG-based answer generation and citations."""
 
-import json
 import logging
-import re
 import uuid
-from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,32 +10,17 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
 from app.database import get_db
-from app.services.anthropic import get_client
-from app.utils import build_google_drive_url, format_location
-
-logger = logging.getLogger(__name__)
-from app.models import (
-    Chunk,
-    Conversation,
-    File,
-    Folder,
-    Message,
-)
-from app.models import (
-    Session as DbSession,
-)
+from app.enums import FolderStatus
+from app.models import Chunk, Conversation, File, Folder, Message
+from app.models import Session as DbSession
 from app.routes.auth import get_current_session
 from app.services.chat import agentic_rag, standard_rag
-from app.services.file.embedding import rerank
+from app.utils import build_google_drive_url, format_location, validate_uuid
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Number of chunks to retrieve and rerank
-INITIAL_RETRIEVAL_K = 50
-RERANK_TOP_K = 15
-CONTEXT_TOP_K = 8
 
 
 class ChatRequest(BaseModel):
@@ -91,215 +73,6 @@ class ConversationResponse(BaseModel):
     updated_at: str
 
 
-async def retrieve_chunks(
-    db: AsyncSession,
-    folder_id: uuid.UUID,
-    user_id: uuid.UUID,
-    query_embedding: list[float],
-    top_k: int = INITIAL_RETRIEVAL_K,
-) -> list[tuple[Chunk, File, float]]:
-    """Retrieve chunks using pgvector cosine similarity search."""
-    # Convert embedding to PostgreSQL array format
-    embedding_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
-
-    # Query using pgvector's cosine distance operator (<=>)
-    query = text("""
-        SELECT
-            c.id,
-            c.file_id,
-            c.chunk_text,
-            c.location,
-            c.chunk_index,
-            f.file_name,
-            f.google_file_id,
-            f.mime_type,
-            (c.chunk_embedding <=> CAST(:embedding AS vector)) as distance
-        FROM chunks c
-        JOIN files f ON c.file_id = f.id
-        WHERE f.folder_id = :folder_id
-          AND c.user_id = :user_id
-          AND c.chunk_embedding IS NOT NULL
-        ORDER BY c.chunk_embedding <=> CAST(:embedding AS vector)
-        LIMIT :top_k
-    """)
-
-    result = await db.execute(
-        query,
-        {
-            "embedding": embedding_str,
-            "folder_id": folder_id,
-            "user_id": str(user_id),
-            "top_k": top_k,
-        },
-    )
-    rows = result.fetchall()
-
-    chunks_with_files = []
-    for row in rows:
-        chunk = Chunk(
-            id=row.id,
-            file_id=row.file_id,
-            chunk_text=row.chunk_text,
-            location=row.location,
-            chunk_index=row.chunk_index,
-        )
-        file = File(
-            id=row.file_id,
-            file_name=row.file_name,
-            google_file_id=row.google_file_id,
-            mime_type=row.mime_type,
-        )
-        # Convert distance to similarity (1 - distance for cosine)
-        similarity = 1 - row.distance
-        chunks_with_files.append((chunk, file, similarity))
-
-    return chunks_with_files
-
-
-async def rerank_chunks(
-    query: str,
-    chunks_with_files: list[tuple[Chunk, File, float]],
-    top_k: int = RERANK_TOP_K,
-) -> list[tuple[Chunk, File, float]]:
-    """Rerank chunks using the reranking model."""
-    if not chunks_with_files:
-        return []
-
-    documents = [chunk.chunk_text for chunk, _, _ in chunks_with_files]
-    reranked_indices = await rerank(query, documents, top_k=top_k)
-
-    reranked_chunks = []
-    for idx, score in reranked_indices:
-        chunk, file, _ = chunks_with_files[idx]
-        reranked_chunks.append((chunk, file, score))
-
-    return reranked_chunks
-
-
-def build_context(chunks_with_files: list[tuple[Chunk, File, float]]) -> str:
-    """Build context string from chunks for the LLM."""
-    context_parts = []
-    for i, (chunk, file, _) in enumerate(chunks_with_files):
-        location = format_location(chunk.location)
-        context_parts.append(f"[{i + 1}] From '{file.file_name}' ({location}):\n{chunk.chunk_text}")
-    return "\n\n---\n\n".join(context_parts)
-
-
-def build_system_prompt(context: str) -> str:
-    """Build the system prompt with context for the LLM."""
-    return f"""You are a helpful assistant that answers questions based on the provided documents.
-Your task is to provide accurate, well-structured answers using ONLY the information from the provided context.
-
-IMPORTANT INSTRUCTIONS:
-1. Base your answers ONLY on the provided context. Do not make up information.
-2. When you use information from the context, cite the source using [N] notation where N is the source number.
-3. If the context doesn't contain enough information to fully answer the question, say so clearly.
-4. Be concise but thorough. Structure your response for clarity.
-5. Use multiple citations when information comes from multiple sources.
-
-CONTEXT:
-{context}
-
-Remember: Always cite your sources using [1], [2], etc. matching the source numbers above."""
-
-
-def extract_citation_numbers(text: str) -> set[int]:
-    """Extract citation numbers from the response text."""
-    # Match [1], [2], [3], etc.
-    pattern = r"\[(\d+)\]"
-    matches = re.findall(pattern, text)
-    return {int(m) for m in matches}
-
-
-async def generate_streaming_response(
-    db: AsyncSession,
-    folder_id: uuid.UUID,
-    conversation: Conversation,
-    user_message: str,
-    chunks_with_files: list[tuple[Chunk, File, float]],
-    searched_files: list[str],
-) -> AsyncGenerator[str, None]:
-    """Generate streaming response from Claude with citations."""
-    # Build context from top chunks for generation
-    top_chunks = chunks_with_files[:CONTEXT_TOP_K]
-    context = build_context(top_chunks)
-    system_prompt = build_system_prompt(context)
-
-    # Get conversation history for context
-    history_result = await db.execute(
-        select(Message)
-        .where(Message.conversation_id == conversation.id)
-        .order_by(Message.created_at)
-    )
-    history_messages = history_result.scalars().all()
-
-    # Build messages list
-    messages = []
-    for msg in history_messages:
-        messages.append({"role": msg.role, "content": msg.content})
-    messages.append({"role": "user", "content": user_message})
-
-    # Store user message
-    user_msg = Message(
-        conversation_id=conversation.id,
-        role="user",
-        content=user_message,
-    )
-    db.add(user_msg)
-    await db.flush()
-
-    # Stream response from Claude using the shared client
-    client = get_client()
-    full_response = ""
-
-    try:
-        async with client.messages.stream(
-            model=settings.claude_model,
-            max_tokens=4096,
-            system=system_prompt,
-            messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
-                full_response += text
-                yield f"data: {json.dumps({'token': text})}\n\n"
-    except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-        return
-
-    # Extract citations from the response
-    citation_numbers = extract_citation_numbers(full_response)
-    citations = {}
-
-    for num in citation_numbers:
-        if 1 <= num <= len(top_chunks):
-            chunk, file, _ = top_chunks[num - 1]
-            location = format_location(chunk.location)
-            excerpt = (
-                chunk.chunk_text[:200] + "..." if len(chunk.chunk_text) > 200 else chunk.chunk_text
-            )
-
-            citations[str(num)] = {
-                "chunk_id": str(chunk.id),
-                "file_name": file.file_name,
-                "location": location,
-                "excerpt": excerpt,
-                "google_drive_url": build_google_drive_url(file.google_file_id),
-            }
-
-    # Store assistant message with citations
-    assistant_msg = Message(
-        conversation_id=conversation.id,
-        role="assistant",
-        content=full_response,
-        citations=citations,
-    )
-    db.add(assistant_msg)
-    await db.flush()
-
-    # Send final message with citations and metadata
-    yield f"data: {json.dumps({'done': True, 'citations': citations, 'searched_files': searched_files, 'conversation_id': str(conversation.id)})}\n\n"
-
-
 @router.post("/folders/{folder_id}/chat")
 async def chat(
     folder_id: str,
@@ -326,7 +99,7 @@ async def chat(
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
 
-    if folder.index_status != "ready":
+    if folder.index_status != FolderStatus.READY:
         raise HTTPException(
             status_code=400,
             detail="Folder is still being indexed. Please wait.",
@@ -412,40 +185,44 @@ async def list_conversations(
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
 
-    # Get conversations with their first user message as preview
+    # Efficient query: fetch conversations with only first user message preview
+    # Uses DISTINCT ON to get only the first user message per conversation
     result = await db.execute(
-        select(Conversation)
-        .where(Conversation.folder_id == folder_uuid)
-        .options(selectinload(Conversation.messages))
-        .order_by(Conversation.created_at.desc())
+        text("""
+            SELECT
+                c.id,
+                c.title,
+                c.created_at,
+                c.updated_at,
+                COALESCE(
+                    (
+                        SELECT SUBSTRING(m.content, 1, 100)
+                        FROM messages m
+                        WHERE m.conversation_id = c.id
+                          AND m.role = 'user'
+                        ORDER BY m.created_at ASC
+                        LIMIT 1
+                    ),
+                    'New conversation'
+                ) as preview
+            FROM conversations c
+            WHERE c.folder_id = :folder_id
+            ORDER BY c.created_at DESC
+        """),
+        {"folder_id": str(folder_uuid)},
     )
-    conversations = result.scalars().all()
+    rows = result.fetchall()
 
-    previews = []
-    for conv in conversations:
-        # Find first user message for preview
-        user_messages = [m for m in conv.messages if m.role == "user"]
-        if user_messages:
-            first_msg = min(user_messages, key=lambda m: m.created_at)
-            preview = (
-                first_msg.content[:100] + "..."
-                if len(first_msg.content) > 100
-                else first_msg.content
-            )
-        else:
-            preview = "New conversation"
-
-        previews.append(
-            ConversationPreview(
-                id=str(conv.id),
-                title=conv.title,
-                preview=preview,
-                created_at=conv.created_at.isoformat(),
-                updated_at=conv.updated_at.isoformat(),
-            )
+    return [
+        ConversationPreview(
+            id=str(row.id),
+            title=row.title,
+            preview=row.preview + "..." if len(row.preview) == 100 else row.preview,
+            created_at=row.created_at.isoformat(),
+            updated_at=row.updated_at.isoformat(),
         )
-
-    return previews
+        for row in rows
+    ]
 
 
 @router.get("/conversations/{conversation_id}/messages")
@@ -499,10 +276,7 @@ async def get_chunk_context(
     db: AsyncSession = Depends(get_db),
 ):
     """Get surrounding context for a chunk (for citations)."""
-    try:
-        chunk_uuid = uuid.UUID(chunk_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid chunk ID") from None
+    chunk_uuid = validate_uuid(chunk_id, "chunk ID")
 
     # Get chunk with file and folder info
     result = await db.execute(
@@ -717,7 +491,7 @@ async def chat_in_conversation(
         raise HTTPException(status_code=403, detail="Access denied")
 
     folder = conversation.folder
-    if folder.index_status != "ready":
+    if folder.index_status != FolderStatus.READY:
         raise HTTPException(
             status_code=400,
             detail="Folder is still being indexed. Please wait.",

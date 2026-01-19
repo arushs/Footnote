@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import Session, User
+from app.services.auth import refresh_access_token
 
 router = APIRouter()
 
@@ -160,7 +161,7 @@ async def get_current_user(
     # Check if session is expired
     if session.expires_at < datetime.now(UTC):
         # Try to refresh the token
-        session = await refresh_access_token(session, db)
+        session = await refresh_access_token(session, db, delete_on_failure=True)
         if not session:
             raise HTTPException(status_code=401, detail="Session expired")
 
@@ -175,37 +176,6 @@ async def get_current_user(
         "email": user.email,
         "google_id": user.google_id,
     }
-
-
-async def refresh_access_token(session: Session, db: AsyncSession) -> Session | None:
-    """Refresh an expired access token using the refresh token."""
-    if not session.refresh_token:
-        return None
-
-    async with httpx.AsyncClient() as client:
-        token_response = await client.post(
-            GOOGLE_TOKEN_URL,
-            data={
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "refresh_token": session.refresh_token,
-                "grant_type": "refresh_token",
-            },
-        )
-
-        if token_response.status_code != 200:
-            # Refresh token is invalid, delete the session
-            await db.delete(session)
-            return None
-
-        tokens = token_response.json()
-        session.access_token = tokens["access_token"]
-        session.expires_at = datetime.now(UTC) + timedelta(seconds=tokens.get("expires_in", 3600))
-        # Google sometimes returns a new refresh token
-        if "refresh_token" in tokens:
-            session.refresh_token = tokens["refresh_token"]
-
-        return session
 
 
 async def get_current_session(
@@ -229,7 +199,7 @@ async def get_current_session(
 
     # Check if session is expired and refresh if needed
     if session.expires_at < datetime.now(UTC):
-        session = await refresh_access_token(session, db)
+        session = await refresh_access_token(session, db, delete_on_failure=True)
         if not session:
             raise HTTPException(status_code=401, detail="Session expired")
 

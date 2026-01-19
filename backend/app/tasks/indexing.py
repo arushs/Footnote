@@ -19,6 +19,7 @@ from app.exceptions import (
 )
 from app.models import File, Session
 from app.services.anthropic import get_client as get_anthropic_client
+from app.services.auth import refresh_access_token
 from app.services.drive import DriveService
 from app.services.file.chunking import DocumentChunk, chunk_document, generate_file_preview
 from app.services.file.embedding import embed_document, embed_documents_batch
@@ -127,61 +128,6 @@ async def _generate_chunk_contexts(
     return results
 
 
-async def _refresh_session_token(session: Session, db) -> Session | None:
-    """Refresh an expired access token using the refresh token."""
-    from datetime import UTC, datetime, timedelta
-
-    if not session.refresh_token:
-        return None
-
-    async with httpx.AsyncClient() as client:
-        token_response = await client.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "client_id": settings.google_client_id,
-                "client_secret": settings.google_client_secret,
-                "refresh_token": session.refresh_token,
-                "grant_type": "refresh_token",
-            },
-        )
-
-        if token_response.status_code != 200:
-            logger.warning(
-                f"Failed to refresh token for session {session.id}: {token_response.text}"
-            )
-            return None
-
-        tokens = token_response.json()
-        new_access_token = tokens["access_token"]
-        new_expires_at = datetime.now(UTC) + timedelta(seconds=tokens.get("expires_in", 3600))
-        new_refresh_token = tokens.get("refresh_token", session.refresh_token)
-
-        # Update session in database
-        await db.execute(
-            text("""
-                UPDATE sessions
-                SET access_token = :access_token,
-                    refresh_token = :refresh_token,
-                    expires_at = :expires_at
-                WHERE id = :session_id
-            """),
-            {
-                "access_token": new_access_token,
-                "refresh_token": new_refresh_token,
-                "expires_at": new_expires_at,
-                "session_id": str(session.id),
-            },
-        )
-        await db.commit()
-
-        # Return updated session
-        session.access_token = new_access_token
-        session.refresh_token = new_refresh_token
-        session.expires_at = new_expires_at
-        logger.info(f"Successfully refreshed token for session {session.id}")
-        return session
-
-
 async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
     """Get a valid user session for accessing files in a folder, refreshing if needed."""
     async with get_task_session() as db:
@@ -200,7 +146,8 @@ async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
         )
         row = result.first()
         if row:
-            return Session(
+            # Use from_db_row to avoid double-encryption of already-encrypted tokens
+            return Session.from_db_row(
                 id=row.id,
                 user_id=row.user_id,
                 access_token=row.access_token,
@@ -223,7 +170,8 @@ async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
         )
         row = result.first()
         if row:
-            session = Session(
+            # Use from_db_row to avoid double-encryption of already-encrypted tokens
+            session = Session.from_db_row(
                 id=row.id,
                 user_id=row.user_id,
                 access_token=row.access_token,
@@ -231,7 +179,7 @@ async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
                 expires_at=row.expires_at,
             )
             # Try to refresh the token
-            refreshed = await _refresh_session_token(session, db)
+            refreshed = await refresh_access_token(session, db, use_raw_sql=True)
             if refreshed:
                 return refreshed
 
