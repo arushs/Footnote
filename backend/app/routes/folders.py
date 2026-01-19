@@ -1,14 +1,16 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.enums import FolderStatus as FolderStatusEnum
+from app.middleware.rate_limit import limiter
 from app.models import File, Folder
 from app.models import Session as DbSession
 from app.routes.auth import get_current_session
@@ -80,12 +82,16 @@ async def list_folders(
 
 
 @router.post("", response_model=FolderResponse)
+@limiter.limit(f"{settings.rate_limit_folder_create_per_hour}/hour")
 async def create_folder(
+    request: Request,
     folder: FolderCreate,
     session: DbSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new folder and start indexing."""
+    # Set user_id on request state for rate limiter
+    request.state.user_id = str(session.user_id)
     # Create the folder record
     new_folder = Folder(
         user_id=session.user_id,
@@ -192,12 +198,16 @@ async def get_folder(
 
 
 @router.get("/{folder_id}/status", response_model=FolderStatus)
+@limiter.limit(f"{settings.rate_limit_status_per_minute}/minute")
 async def get_folder_status(
+    request: Request,
     folder_id: str,
     session: DbSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Get folder indexing status (for polling)."""
+    # Set user_id on request state for rate limiter
+    request.state.user_id = str(session.user_id)
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:
@@ -222,12 +232,16 @@ async def get_folder_status(
 
 
 @router.post("/{folder_id}/sync", response_model=SyncResult)
+@limiter.limit(f"{settings.rate_limit_folder_sync_per_minute}/minute")
 async def sync_folder(
+    request: Request,
     folder_id: str,
     session: DbSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger background sync with Google Drive."""
+    # Set user_id on request state for rate limiter
+    request.state.user_id = str(session.user_id)
     try:
         folder_uuid = uuid.UUID(folder_id)
     except ValueError:

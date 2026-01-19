@@ -4,10 +4,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 from app.database import init_db
+from app.middleware import RequestSizeLimitMiddleware, limiter
 from app.routes import auth, chat, folders, health
 from app.services.anthropic import close_client as close_anthropic_client
 from app.services.posthog import shutdown_posthog
@@ -51,6 +54,13 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# Rate limiter state (required by slowapi)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Request size limit middleware (prevents memory exhaustion)
+app.add_middleware(RequestSizeLimitMiddleware)
 
 # CSRF protection - validates Origin header for state-changing requests
 app.add_middleware(CSRFProtectionMiddleware)

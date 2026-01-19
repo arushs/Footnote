@@ -1,11 +1,15 @@
-"""Health check endpoints including Celery worker status."""
+"""Health check endpoints including Celery worker status and database connectivity."""
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery_app
+from app.config import settings
+from app.database import get_db
 
 router = APIRouter()
 
@@ -38,3 +42,27 @@ async def celery_health():
         raise
     except Exception as e:
         raise HTTPException(503, f"Celery health check failed: {e}") from e
+
+
+@router.get("/db")
+async def db_health(db: AsyncSession = Depends(get_db)):
+    """Check database connectivity and verify timeout configuration.
+
+    Returns the current statement_timeout setting to verify proper configuration.
+    """
+    try:
+        # Simple query to verify connectivity
+        result = await db.execute(text("SELECT 1"))
+        result.scalar()
+
+        # Get current timeout settings
+        timeout_result = await db.execute(text("SHOW statement_timeout"))
+        statement_timeout = timeout_result.scalar()
+
+        return {
+            "status": "healthy",
+            "statement_timeout": statement_timeout,
+            "expected_timeout_ms": settings.db_statement_timeout_ms,
+        }
+    except Exception as e:
+        raise HTTPException(503, f"Database health check failed: {e}") from e

@@ -25,6 +25,7 @@ from app.services.file.chunking import DocumentChunk, chunk_document, generate_f
 from app.services.file.embedding import embed_document, embed_documents_batch
 from app.services.file.extraction import ExtractionService
 from app.services.posthog import LLMTimer, track_llm_generation
+from app.tasks.base import DLQTask
 from app.utils import format_vector
 
 logger = logging.getLogger(__name__)
@@ -440,6 +441,7 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
 
 
 @celery_app.task(
+    base=DLQTask,
     bind=True,
     autoretry_for=(TransientIndexingError,),
     retry_backoff=30,  # Start at 30 seconds
@@ -455,6 +457,7 @@ def process_indexing_job(self, file_id: str, folder_id: str, user_id: str):
     Process a single file indexing job.
 
     Uses single asyncio.run() call to preserve event loop efficiency.
+    On permanent failure, marks the file as skipped and captures to DLQ.
     """
     self.update_state(state="PROGRESS", meta={"step": "starting", "file_id": file_id})
 
@@ -464,8 +467,9 @@ def process_indexing_job(self, file_id: str, folder_id: str, user_id: str):
         return result
     except PermanentIndexingError as e:
         logger.error(f"Permanent error processing file {file_id}: {e}")
-        # Mark file as failed
-        asyncio.run(_update_file_status(uuid.UUID(file_id), "failed"))
+        # Mark file as skipped (not failed) so folder can complete
+        asyncio.run(_update_file_status(uuid.UUID(file_id), "skipped"))
+        asyncio.run(_update_folder_progress(uuid.UUID(folder_id)))
         raise
     except TransientIndexingError:
         # Will be retried by Celery

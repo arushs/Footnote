@@ -3,15 +3,17 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.enums import FolderStatus
+from app.middleware.rate_limit import limiter
 from app.models import Chunk, Conversation, File, Folder, Message
 from app.models import Session as DbSession
 from app.routes.auth import get_current_session
@@ -28,6 +30,18 @@ class ChatRequest(BaseModel):
     conversation_id: str | None = None
     agent_mode: bool = False  # Enable agent mode for iterative search
     max_iterations: int = 10  # Max tool-use iterations for agent mode
+
+    @field_validator("message")
+    @classmethod
+    def validate_message_length(cls, v: str) -> str:
+        """Enforce maximum message length to prevent resource exhaustion."""
+        if len(v) > settings.max_chat_message_length:
+            raise ValueError(
+                f"Message exceeds maximum length of {settings.max_chat_message_length:,} characters"
+            )
+        if not v.strip():
+            raise ValueError("Message cannot be empty")
+        return v
 
 
 class CitationData(BaseModel):
@@ -64,6 +78,18 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: str
 
+    @field_validator("title")
+    @classmethod
+    def validate_title_length(cls, v: str) -> str:
+        """Enforce maximum title length."""
+        if len(v) > settings.max_conversation_title_length:
+            raise ValueError(
+                f"Title exceeds maximum length of {settings.max_conversation_title_length} characters"
+            )
+        if not v.strip():
+            raise ValueError("Title cannot be empty")
+        return v.strip()
+
 
 class ConversationResponse(BaseModel):
     id: str
@@ -74,13 +100,17 @@ class ConversationResponse(BaseModel):
 
 
 @router.post("/folders/{folder_id}/chat")
+@limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
 async def chat(
+    request: Request,
     folder_id: str,
-    request: ChatRequest,
+    chat_request: ChatRequest,
     session: DbSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Send a message and get a streaming response with citations."""
+    # Set user_id on request state for rate limiter
+    request.state.user_id = str(session.user_id)
     # Validate folder ID
     try:
         folder_uuid = uuid.UUID(folder_id)
@@ -106,9 +136,9 @@ async def chat(
         )
 
     # Get or create conversation
-    if request.conversation_id:
+    if chat_request.conversation_id:
         try:
-            conv_uuid = uuid.UUID(request.conversation_id)
+            conv_uuid = uuid.UUID(chat_request.conversation_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid conversation ID") from None
 
@@ -128,21 +158,21 @@ async def chat(
 
     # Route to appropriate mode based on agent_mode flag
     logger.info(
-        f"[CHAT] Chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}..."
+        f"[CHAT] Chat request - agent_mode: {chat_request.agent_mode}, max_iterations: {chat_request.max_iterations}, message: {chat_request.message[:50]}..."
     )
-    if request.agent_mode:
+    if chat_request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
-        logger.info(f"[CHAT] Using AGENT mode (max_iterations: {request.max_iterations})")
+        logger.info(f"[CHAT] Using AGENT mode (max_iterations: {chat_request.max_iterations})")
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder_uuid,
             user_id=session.user_id,
             conversation=conversation,
-            user_message=request.message,
+            user_message=chat_request.message,
             folder_name=folder.folder_name,
             files_indexed=folder.files_indexed,
             files_total=folder.files_total,
-            max_iterations=request.max_iterations,
+            max_iterations=chat_request.max_iterations,
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)
@@ -152,7 +182,7 @@ async def chat(
             folder_id=folder_uuid,
             user_id=session.user_id,
             conversation=conversation,
-            user_message=request.message,
+            user_message=chat_request.message,
         )
 
     return StreamingResponse(
@@ -464,13 +494,17 @@ async def delete_conversation(
 
 
 @router.post("/conversations/{conversation_id}/chat")
+@limiter.limit(f"{settings.rate_limit_chat_per_minute}/minute")
 async def chat_in_conversation(
+    request: Request,
     conversation_id: str,
-    request: ChatRequest,
+    chat_request: ChatRequest,
     session: DbSession = Depends(get_current_session),
     db: AsyncSession = Depends(get_db),
 ):
     """Send a message to an existing conversation."""
+    # Set user_id on request state for rate limiter
+    request.state.user_id = str(session.user_id)
     try:
         conv_uuid = uuid.UUID(conversation_id)
     except ValueError:
@@ -499,23 +533,23 @@ async def chat_in_conversation(
 
     # Route to appropriate mode based on agent_mode flag
     logger.info(
-        f"[CHAT] Conversation chat request - agent_mode: {request.agent_mode}, max_iterations: {request.max_iterations}, message: {request.message[:50]}..."
+        f"[CHAT] Conversation chat request - agent_mode: {chat_request.agent_mode}, max_iterations: {chat_request.max_iterations}, message: {chat_request.message[:50]}..."
     )
-    if request.agent_mode:
+    if chat_request.agent_mode:
         # Agent mode: iterative search with tools (slower, more thorough)
         logger.info(
-            f"[CHAT] Using AGENT mode (conversation, max_iterations: {request.max_iterations})"
+            f"[CHAT] Using AGENT mode (conversation, max_iterations: {chat_request.max_iterations})"
         )
         rag_generator = agentic_rag(
             db=db,
             folder_id=folder.id,
             user_id=session.user_id,
             conversation=conversation,
-            user_message=request.message,
+            user_message=chat_request.message,
             folder_name=folder.folder_name,
             files_indexed=folder.files_indexed,
             files_total=folder.files_total,
-            max_iterations=request.max_iterations,
+            max_iterations=chat_request.max_iterations,
         )
     else:
         # Standard mode: single-shot hybrid RAG (default, fast)
@@ -525,7 +559,7 @@ async def chat_in_conversation(
             folder_id=folder.id,
             user_id=session.user_id,
             conversation=conversation,
-            user_message=request.message,
+            user_message=chat_request.message,
         )
 
     return StreamingResponse(
