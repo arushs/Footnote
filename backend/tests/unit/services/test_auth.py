@@ -143,23 +143,3 @@ class TestRefreshAccessToken:
         assert result is not None
         assert mock_session.refresh_token == "new-refresh-token"
 
-    @pytest.mark.asyncio
-    async def test_use_raw_sql_flag(self, mock_session, mock_db):
-        """Should use raw SQL for updates when use_raw_sql=True."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "access_token": "new-access-token",
-            "expires_in": 3600,
-        }
-
-        with patch("app.services.auth.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
-
-            await refresh_access_token(mock_session, mock_db, use_raw_sql=True)
-
-        # Should have called execute (raw SQL) and commit
-        mock_db.execute.assert_called_once()
-        mock_db.commit.assert_called_once()

@@ -8,8 +8,8 @@ from sqlalchemy import DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.crypto import decrypt_token, encrypt_token, is_encrypted
-from app.database import Base
+from app.db import Base
+from app.utils import decrypt_token, encrypt_token, is_encrypted
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -60,24 +60,3 @@ class Session(Base):
         """Set and encrypt refresh token."""
         self._refresh_token = encrypt_token(value) if value else ""
 
-    @classmethod
-    def from_db_row(
-        cls,
-        id: uuid.UUID,
-        user_id: uuid.UUID,
-        access_token: str,
-        refresh_token: str,
-        expires_at: datetime,
-    ) -> "Session":
-        """Create a Session from raw database values (already encrypted).
-
-        Use this when constructing a Session from raw SQL results where
-        tokens are already encrypted in the database.
-        """
-        session = cls.__new__(cls)
-        session.id = id
-        session.user_id = user_id
-        session._access_token = access_token  # Already encrypted, don't re-encrypt
-        session._refresh_token = refresh_token  # Already encrypted, don't re-encrypt
-        session.expires_at = expires_at
-        return session

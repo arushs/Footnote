@@ -7,7 +7,7 @@ import pytest
 # Set test secret key before importing crypto module
 os.environ["SECRET_KEY"] = "test-secret-key-for-crypto-tests"
 
-from app.crypto import decrypt_token, encrypt_token, is_encrypted
+from app.utils import decrypt_token, encrypt_token, is_encrypted
 
 
 class TestEncryptToken:

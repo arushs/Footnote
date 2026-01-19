@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import get_db
+from app.db import get_db
 from app.enums import FolderStatus as FolderStatusEnum
 from app.middleware.rate_limit import limiter
 from app.models import File, Folder

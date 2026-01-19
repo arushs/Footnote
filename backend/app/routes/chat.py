@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config import settings
-from app.database import get_db
+from app.db import get_db
 from app.enums import FolderStatus
 from app.middleware.rate_limit import limiter
 from app.models import Chunk, Conversation, File, Folder, Message

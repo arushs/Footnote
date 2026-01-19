@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
 
     # Rate limiting
-    rate_limit_enabled: bool = True
+    rate_limit_enabled: bool = False  # Disabled until slowapi issue is fixed
     rate_limit_chat_per_minute: int = 20
     rate_limit_folder_create_per_hour: int = 10
     rate_limit_folder_sync_per_minute: int = 5

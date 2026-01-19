@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
-from app.database import init_db
+from app.db import init_db
 from app.middleware import RequestSizeLimitMiddleware, limiter
 from app.routes import auth, chat, folders, health
 from app.services.anthropic import close_client as close_anthropic_client

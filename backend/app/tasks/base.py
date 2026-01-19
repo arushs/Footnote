@@ -5,7 +5,7 @@ from datetime import datetime
 
 from celery import Task
 
-from app.database_celery import celery_session_scope
+from app.db import celery_session_scope
 from app.models.failed_task import FailedTask
 
 logger = logging.getLogger(__name__)

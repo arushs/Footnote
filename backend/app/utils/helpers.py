@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 from sqlalchemy import text
 
-from app.models import Session
-
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models import Session
 
 
 def validate_uuid(value: str, name: str = "ID") -> uuid.UUID:
@@ -69,6 +69,9 @@ def format_location(location: dict, mime_type: str | None = None) -> str:
 
 async def get_user_session_for_folder(db: AsyncSession, folder_id: uuid.UUID) -> Session | None:
     """Get a valid user session for accessing files in a folder."""
+    # Import here to avoid circular import (models imports utils)
+    from app.models import Session
+
     result = await db.execute(
         text("""
             SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at

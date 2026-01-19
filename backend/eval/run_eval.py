@@ -302,7 +302,7 @@ async def run_agent_rag(
     """Run the full agentic RAG loop using the real agent code."""
     from sqlalchemy import select
 
-    from app.database import get_task_session
+    from app.db import get_task_session
     from app.models import Conversation, File, Folder
     from app.services.chat.agent import agentic_rag
 
@@ -383,7 +383,7 @@ async def setup_temp_folder(
     """Create a temporary folder with indexed documents in the database."""
     from sqlalchemy import text
 
-    from app.database import get_task_session
+    from app.db import get_task_session
     from app.models import Chunk as ChunkModel
     from app.models import File, Folder, User
 
@@ -453,7 +453,7 @@ async def cleanup_temp_folder(folder_id: uuid.UUID):
     """Remove temporary folder and all its data."""
     from sqlalchemy import text
 
-    from app.database import get_task_session
+    from app.db import get_task_session
 
     async with get_task_session() as db:
         await db.execute(

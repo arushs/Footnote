@@ -36,7 +36,7 @@ os.environ["MISTRAL_API_KEY"] = "test-mistral-key"
 os.environ["SECRET_KEY"] = "test-secret-key"
 os.environ["FRONTEND_URL"] = "http://localhost:3000"
 
-from app.database import Base, get_db
+from app.db import Base, get_db
 from app.models import (
     Chunk,
     Conversation,

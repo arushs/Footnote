@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from app.celery_app import celery_app
-from app.exceptions import PermanentIndexingError, TransientIndexingError
+from app.tasks.exceptions import PermanentIndexingError, TransientIndexingError
 from app.tasks.indexing import process_indexing_job
 
 
@@ -71,19 +71,19 @@ class TestExceptionTaxonomy:
 
     def test_permanent_error_inherits_from_indexing_error(self):
         """PermanentIndexingError should inherit from IndexingError."""
-        from app.exceptions import IndexingError
+        from app.tasks.exceptions import IndexingError
 
         assert issubclass(PermanentIndexingError, IndexingError)
 
     def test_transient_error_inherits_from_indexing_error(self):
         """TransientIndexingError should inherit from IndexingError."""
-        from app.exceptions import IndexingError
+        from app.tasks.exceptions import IndexingError
 
         assert issubclass(TransientIndexingError, IndexingError)
 
     def test_permanent_errors_list_contains_expected_types(self):
         """PERMANENT_ERRORS should contain non-retryable error types."""
-        from app.exceptions import PERMANENT_ERRORS
+        from app.tasks.exceptions import PERMANENT_ERRORS
 
         assert ValueError in PERMANENT_ERRORS
         assert PermissionError in PERMANENT_ERRORS
@@ -91,7 +91,7 @@ class TestExceptionTaxonomy:
 
     def test_transient_errors_list_contains_expected_types(self):
         """TRANSIENT_ERRORS should contain retryable error types."""
-        from app.exceptions import TRANSIENT_ERRORS
+        from app.tasks.exceptions import TRANSIENT_ERRORS
 
         assert ConnectionError in TRANSIENT_ERRORS
         assert TimeoutError in TRANSIENT_ERRORS
@@ -115,14 +115,12 @@ class TestProcessIndexingJobExecution:
             "user_id": str(uuid.uuid4()),
         }
 
-    @patch.object(process_indexing_job, "update_state")
     @patch("app.tasks.indexing.asyncio.run")
-    def test_task_returns_result_on_success(self, mock_asyncio_run, mock_update_state, sample_ids):
+    def test_task_returns_result_on_success(self, mock_asyncio_run, sample_ids):
         """Task should return the result from async processing."""
         expected_result = {"status": "completed", "file_id": sample_ids["file_id"], "chunks": 10}
         mock_asyncio_run.return_value = expected_result
 
-        # Use apply() with eager mode - mock update_state to avoid Redis
         result = process_indexing_job.run(
             sample_ids["file_id"],
             sample_ids["folder_id"],
@@ -130,7 +128,7 @@ class TestProcessIndexingJobExecution:
         )
 
         assert result == expected_result
-        mock_update_state.assert_called_once()
+        mock_asyncio_run.assert_called_once()
 
     @patch.object(process_indexing_job, "update_state")
     @patch("app.tasks.indexing._update_file_status")

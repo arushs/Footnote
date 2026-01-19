@@ -148,7 +148,7 @@ class TestConfigSettings:
 
     def test_rate_limit_settings_defaults(self):
         """Rate limit settings should have correct defaults."""
-        assert settings.rate_limit_enabled is True
+        assert settings.rate_limit_enabled is False  # Disabled until slowapi issue is fixed
         assert settings.rate_limit_chat_per_minute == 20
         assert settings.rate_limit_folder_create_per_hour == 10
         assert settings.rate_limit_folder_sync_per_minute == 5

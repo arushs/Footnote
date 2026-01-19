@@ -4,20 +4,15 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.celery_app import celery_app
 from app.config import settings
-from app.database import get_task_session
-from app.exceptions import (
-    PERMANENT_ERRORS,
-    TRANSIENT_ERRORS,
-    PermanentIndexingError,
-    TransientIndexingError,
-)
-from app.models import File, Session
+from app.db import get_task_session
+from app.models import File, Folder, Session
 from app.services.anthropic import get_client as get_anthropic_client
 from app.services.auth import refresh_access_token
 from app.services.drive import DriveService
@@ -26,6 +21,12 @@ from app.services.file.embedding import embed_document, embed_documents_batch
 from app.services.file.extraction import ExtractionService
 from app.services.posthog import LLMTimer, track_llm_generation
 from app.tasks.base import DLQTask
+from app.tasks.exceptions import (
+    PERMANENT_ERRORS,
+    TRANSIENT_ERRORS,
+    PermanentIndexingError,
+    TransientIndexingError,
+)
 from app.utils import format_vector
 
 logger = logging.getLogger(__name__)
@@ -132,55 +133,36 @@ async def _generate_chunk_contexts(
 async def _get_user_session_for_folder(folder_id: uuid.UUID) -> Session | None:
     """Get a valid user session for accessing files in a folder, refreshing if needed."""
     async with get_task_session() as db:
+        # Get folder to find user_id
+        folder = await db.get(Folder, folder_id)
+        if not folder:
+            return None
+
         # First try to get a non-expired session
         result = await db.execute(
-            text("""
-                SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
-                FROM sessions s
-                JOIN folders f ON f.user_id = s.user_id
-                WHERE f.id = :folder_id
-                  AND s.expires_at > NOW()
-                ORDER BY s.expires_at DESC
-                LIMIT 1
-            """),
-            {"folder_id": str(folder_id)},
+            select(Session)
+            .where(Session.user_id == folder.user_id)
+            .where(Session.expires_at > datetime.now(UTC))
+            .order_by(Session.expires_at.desc())
+            .limit(1)
         )
-        row = result.first()
-        if row:
-            # Use from_db_row to avoid double-encryption of already-encrypted tokens
-            return Session.from_db_row(
-                id=row.id,
-                user_id=row.user_id,
-                access_token=row.access_token,
-                refresh_token=row.refresh_token,
-                expires_at=row.expires_at,
-            )
+        session = result.scalar_one_or_none()
+        if session:
+            return session
 
         # No valid session found, try to get an expired one with a refresh token
         result = await db.execute(
-            text("""
-                SELECT s.id, s.user_id, s.access_token, s.refresh_token, s.expires_at
-                FROM sessions s
-                JOIN folders f ON f.user_id = s.user_id
-                WHERE f.id = :folder_id
-                  AND s.refresh_token IS NOT NULL
-                ORDER BY s.expires_at DESC
-                LIMIT 1
-            """),
-            {"folder_id": str(folder_id)},
+            select(Session)
+            .where(Session.user_id == folder.user_id)
+            .where(Session._refresh_token.isnot(None))
+            .where(Session._refresh_token != "")
+            .order_by(Session.expires_at.desc())
+            .limit(1)
         )
-        row = result.first()
-        if row:
-            # Use from_db_row to avoid double-encryption of already-encrypted tokens
-            session = Session.from_db_row(
-                id=row.id,
-                user_id=row.user_id,
-                access_token=row.access_token,
-                refresh_token=row.refresh_token,
-                expires_at=row.expires_at,
-            )
+        session = result.scalar_one_or_none()
+        if session:
             # Try to refresh the token
-            refreshed = await refresh_access_token(session, db, use_raw_sql=True)
+            refreshed = await refresh_access_token(session, db)
             if refreshed:
                 return refreshed
 
@@ -459,8 +441,6 @@ def process_indexing_job(self, file_id: str, folder_id: str, user_id: str):
     Uses single asyncio.run() call to preserve event loop efficiency.
     On permanent failure, marks the file as skipped and captures to DLQ.
     """
-    self.update_state(state="PROGRESS", meta={"step": "starting", "file_id": file_id})
-
     try:
         # Single event loop for all async work
         result = asyncio.run(_process_job_async(file_id, folder_id, user_id))
@@ -468,8 +448,16 @@ def process_indexing_job(self, file_id: str, folder_id: str, user_id: str):
     except PermanentIndexingError as e:
         logger.error(f"Permanent error processing file {file_id}: {e}")
         # Mark file as skipped (not failed) so folder can complete
-        asyncio.run(_update_file_status(uuid.UUID(file_id), "skipped"))
-        asyncio.run(_update_folder_progress(uuid.UUID(folder_id)))
+        # Validate UUIDs before using - if invalid, just let the error propagate
+        try:
+            file_uuid = uuid.UUID(file_id) if file_id else None
+            folder_uuid = uuid.UUID(folder_id) if folder_id else None
+            if file_uuid:
+                asyncio.run(_update_file_status(file_uuid, "skipped"))
+            if folder_uuid:
+                asyncio.run(_update_folder_progress(folder_uuid))
+        except (ValueError, TypeError):
+            logger.warning(f"Cannot update status - invalid UUIDs: file={file_id}, folder={folder_id}")
         raise
     except TransientIndexingError:
         # Will be retried by Celery

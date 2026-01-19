@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database import Base
+from app.db import Base
 
 
 class FailedTask(Base):
