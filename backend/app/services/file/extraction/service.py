@@ -4,6 +4,7 @@ from app.services.file.extraction.google_docs import GoogleDocsExtractor
 from app.services.file.extraction.image import ImageExtractor
 from app.services.file.extraction.models import ExtractedDocument
 from app.services.file.extraction.pdf import PDFExtractor
+from app.services.file.extraction.spreadsheet import SpreadsheetExtractor
 
 
 class ExtractionService:
@@ -37,10 +38,18 @@ class ExtractionService:
         "application/vnd.google-apps.photo",
     }
 
+    # Spreadsheet types (Excel files)
+    SPREADSHEET_MIMETYPES = {
+        "application/vnd.ms-excel",  # .xls
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",  # .xlsx
+        "application/vnd.google-apps.spreadsheet",  # Google Sheets (exported as xlsx)
+    }
+
     def __init__(self):
         self.google_docs_extractor = GoogleDocsExtractor()
         self.pdf_extractor = PDFExtractor()
         self.image_extractor = ImageExtractor()
+        self.spreadsheet_extractor = SpreadsheetExtractor()
 
     async def extract_google_doc(self, html_content: str) -> ExtractedDocument:
         """Extract text from Google Docs HTML export."""
@@ -59,6 +68,14 @@ class ExtractionService:
         """Extract text description from image using Claude Vision."""
         return await self.image_extractor.extract(image_content, mime_type, file_name)
 
+    def extract_spreadsheet(
+        self,
+        content: bytes,
+        file_name: str | None = None,
+    ) -> ExtractedDocument:
+        """Extract text from Excel spreadsheet."""
+        return self.spreadsheet_extractor.extract(content, file_name)
+
     def is_google_doc(self, mime_type: str) -> bool:
         """Check if mime type is a Google Doc."""
         return mime_type in self.GOOGLE_DOC_MIMETYPES
@@ -75,6 +92,18 @@ class ExtractionService:
         """Check if mime type is an image supported by Claude Vision API."""
         return mime_type in self.VISION_SUPPORTED_MIMETYPES
 
+    def is_spreadsheet(self, mime_type: str) -> bool:
+        """Check if mime type is a spreadsheet (Excel or Google Sheets)."""
+        return mime_type in self.SPREADSHEET_MIMETYPES
+
+    def is_google_spreadsheet(self, mime_type: str) -> bool:
+        """Check if mime type is specifically a Google Sheets file."""
+        return mime_type == "application/vnd.google-apps.spreadsheet"
+
     def is_supported(self, mime_type: str) -> bool:
         """Check if the mime type is supported for extraction."""
-        return self.is_google_doc(mime_type) or self.is_pdf(mime_type)
+        return (
+            self.is_google_doc(mime_type)
+            or self.is_pdf(mime_type)
+            or self.is_spreadsheet(mime_type)
+        )

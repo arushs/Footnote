@@ -32,9 +32,10 @@ Use this tool when:
 - The indexed chunks may have missed something
 - You need to verify or cross-reference against the original source
 - You need content that wasn't captured during indexing
+- You need to read a spreadsheet/Excel file (spreadsheets are only available via this tool)
 
 This is SLOWER because it downloads fresh from Google Drive and extracts text.
-Works with Google Docs and PDFs.""",
+Works with Google Docs, PDFs, images, and spreadsheets (Excel/Google Sheets).""",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -187,6 +188,39 @@ async def execute(ctx: ToolContext, tool_input: dict) -> str:
             )
 
             return f"[{source_num}] Image analysis of '{file.file_name}':\n\n{image_description}"
+        elif extraction.is_spreadsheet(file.mime_type):
+            # Download/export spreadsheet and extract as markdown tables
+            logger.info(f"[AGENT] Downloading spreadsheet: {file.file_name}")
+            if extraction.is_google_spreadsheet(file.mime_type):
+                spreadsheet_content = await drive.export_google_sheet(file.google_file_id)
+            else:
+                spreadsheet_content = await drive.download_file(file.google_file_id)
+            document = extraction.extract_spreadsheet(spreadsheet_content, file.file_name)
+
+            # Combine all sheets into text
+            full_content = "\n\n".join(block.text for block in document.blocks)
+
+            # Add to indexed_chunks for citation
+            source_num = len(ctx.indexed_chunks) + 1
+            ctx.indexed_chunks.append(
+                {
+                    "chunk_id": "",
+                    "file_id": str(file.id),
+                    "file_name": file.file_name,
+                    "location": "Full spreadsheet (Google Drive)",
+                    "excerpt": full_content[:200] if full_content else "",
+                    "google_drive_url": build_google_drive_url(file.google_file_id),
+                }
+            )
+
+            logger.info(
+                f"[AGENT] get_file downloaded spreadsheet ({len(full_content)} chars) "
+                f"for {file.file_name} as [{source_num}]"
+            )
+
+            return (
+                f"[{source_num}] Full content of spreadsheet '{file.file_name}':\n\n{full_content}"
+            )
         else:
             return json.dumps({"error": f"Unsupported file type: {file.mime_type}"})
 

@@ -296,6 +296,45 @@ async def _process_job_async(file_id: str, folder_id: str, user_id: str) -> dict
             document = await extraction.extract_image(
                 image_content, file_info.mime_type, file_info.file_name
             )
+        elif extraction.is_spreadsheet(file_info.mime_type):
+            # Spreadsheets: extract for preview/embedding but skip chunking
+            # They're available via agentic search (get_file tool) to preserve context
+            logger.info(f"Processing spreadsheet: {file_info.file_name}")
+            if extraction.is_google_spreadsheet(file_info.mime_type):
+                spreadsheet_content = await drive.export_google_sheet(file_info.google_file_id)
+            else:
+                spreadsheet_content = await drive.download_file(file_info.google_file_id)
+            document = extraction.extract_spreadsheet(spreadsheet_content, file_info.file_name)
+
+            # For spreadsheets: generate preview/embedding but skip chunking
+            if document.blocks:
+                preview = generate_file_preview(document.blocks)
+                file_embedding = await embed_document(preview) if preview else None
+
+                async with get_task_session() as db:
+                    await db.execute(
+                        text("""
+                            UPDATE files
+                            SET file_preview = :preview,
+                                file_embedding = CAST(:embedding AS vector),
+                                index_status = 'indexed'
+                            WHERE id = :file_id
+                        """),
+                        {
+                            "preview": preview,
+                            "embedding": format_vector(file_embedding) if file_embedding else None,
+                            "file_id": str(file_uuid),
+                        },
+                    )
+                    await db.commit()
+            else:
+                await _update_file_status(file_uuid, "indexed")
+
+            await _update_folder_progress(folder_uuid)
+            logger.info(
+                f"Indexed spreadsheet {file_info.file_name} (no chunks - agentic access only)"
+            )
+            return {"status": "completed", "file_id": file_id, "chunks": 0}
         else:
             # Skip unsupported file types gracefully
             logger.info(

@@ -87,6 +87,18 @@ class DriveService:
             response.raise_for_status()
             return response.text
 
+    async def export_google_sheet(self, file_id: str) -> bytes:
+        """Export a Google Sheet as xlsx bytes."""
+        xlsx_mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.get(
+                f"{self.DRIVE_API_BASE}/files/{file_id}/export",
+                headers=self.headers,
+                params={"mimeType": xlsx_mime},
+            )
+            response.raise_for_status()
+            return response.content
+
     async def download_file(self, file_id: str) -> bytes:
         """Download a file's content."""
         async with httpx.AsyncClient(timeout=30.0) as client:
