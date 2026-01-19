@@ -70,9 +70,12 @@ def build_agent_system_prompt(
 - Omit irrelevant results entirely
 
 ## Citations
-- Use [N] notation **at the end of sections**, not scattered inline
-- 2-4 citations per response max
+- Cite sources using [N] notation immediately after the claim or fact
+- Cite as needed to ensure the user will have confidence in the claims or facts
+- Do NOT over cite as that will clutter your response. Citations should be accurate but not extra
+- Example: "The project launched in Q3 with a budget of $2M [1][2]."
 - Combine like [1][2] when drawing from multiple sources
+- If a citation is repeated a lot, group it together after the section
 
 ## Your Tools
 - **search_folder**: Search for relevant information using hybrid search (semantic + keyword)

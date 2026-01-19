@@ -34,10 +34,10 @@ STANDARD_SYSTEM_PROMPT = """You are a helpful assistant that answers questions b
 - Bold key terms or important findings
 
 ## Citations
-- Cite sources using [N] notation, but be **selective** - only cite key claims, not every sentence
-- One citation at the end of a paragraph is often enough if the info comes from one source
+- Cite sources **inline** using [N] notation immediately after the claim or fact
+- Place citations right after the relevant statement, not at the end of paragraphs
+- Example: "Revenue grew 15% [1] while costs decreased [2]."
 - Combine citations like [1][2] when a point draws from multiple sources
-- Aim for 2-4 citations in a typical response, not one per sentence
 
 ## Guidelines
 - Base answers ONLY on the provided context - don't make up information

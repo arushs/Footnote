@@ -116,6 +116,23 @@ class TestCreateFolder:
         data = response.json()
         assert data["files_total"] == 0
 
+    @pytest.mark.asyncio
+    async def test_create_folder_rejects_duplicate(
+        self, auth_client: AsyncClient, test_folder: Folder, mock_drive_service
+    ):
+        """Test that creating a duplicate folder returns 409."""
+        with patch("app.routes.folders.DriveService", return_value=mock_drive_service):
+            response = await auth_client.post(
+                "/api/folders",
+                json={
+                    "google_folder_id": test_folder.google_folder_id,
+                    "folder_name": "Duplicate Folder",
+                },
+            )
+
+        assert response.status_code == 409
+        assert response.json()["detail"] == "This folder has already been added"
+
 
 class TestGetFolder:
     """Tests for getting folder details."""
